@@ -1,0 +1,12 @@
+transformers==4.56.1
+torch
+accelerate
+bitsandbytes
+datasets
+lm_eval
+numpy
+tqdm
+triton
+termcolor
+sentencepiece
+protobuf

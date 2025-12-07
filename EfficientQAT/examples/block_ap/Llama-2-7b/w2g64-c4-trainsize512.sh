@@ -1,0 +1,14 @@
+CUDA_VISIBLE_DEVICES=0 python main_block_ap.py \
+--model /home/nku509/models/llama/llama2/llama2_7b_hf  \
+--output_dir ./output/block_ap_log/Llama-2-7b-w2g64-512-c4-hlq \
+--calib_dataset c4 \
+--net Llama-2 \
+--wbits 2 \
+--group_size 64 \
+--quant_lr 1e-4 \
+--weight_lr 0.0 \
+--train_size 512 \
+--real_quant \
+--eval_ppl \
+--save_quant_dir ./output/block_ap_models/Llama-2-7b-w2g64-512-c4-hlq \
+--epoch 2 \
