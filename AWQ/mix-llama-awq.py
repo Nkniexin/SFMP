@@ -3,6 +3,7 @@ import torch.nn as nn
 from transformers.models.bloom.modeling_bloom import BloomBlock, BloomGelu
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
+from transformers.models.qwen3.modeling_qwen3 import Qwen3DecoderLayer,Qwen3RMSNorm
 from transformers.activations import GELUActivation
 import numpy as np
 import json
@@ -119,7 +120,8 @@ def scale_gelu_fc(gelu, fc, scales):
         assert torch.isnan(p).sum() == 0
 
 
-def pseudo_quantize_tensor(w, n_bit = None, zero_point=True, q_group_size=-1, inplace=False, get_scale_zp=False, sensitivity_path = None,linear_name = None,layer_idx=None):
+def pseudo_quantize_tensor(w, n_bit = None, zero_point=True, q_group_size=-1, inplace=False, get_scale_zp=False,use_colreorder = False,  
+                           use_rowreorder = False, sensitivity_path = None,linear_name = None,layer_idx=None, row_interval = None):
     assert q_group_size != 0, "q_group_size should not be 0"
     assert n_bit is not None, "n_bit should not be None"
 
@@ -132,19 +134,19 @@ def pseudo_quantize_tensor(w, n_bit = None, zero_point=True, q_group_size=-1, in
     dim1,dim2 = sensitivity.shape
     w = w.reshape(dim1,dim2)
 
-    row_interval  = 32
+    if use_colreorder :
+        col_sums = sensitivity.sum(dim=0)            
+        col_order = torch.argsort(col_sums, descending=True)  # maybe use descending=False 
+        sensitivity = sensitivity[:, col_order] 
+        w = w[:, col_order]
+        invcol = torch.argsort(col_order)
 
-    col_sums = sensitivity.sum(dim=0)            
-    col_order = torch.argsort(col_sums, descending=True)  # maybe use descending=False 
-    sensitivity = sensitivity[:, col_order] 
-    w = w[:, col_order]
-    invcol = torch.argsort(col_order)
-
-    row_sums = sensitivity.sum(dim=1)            
-    row_order = torch.argsort(row_sums, descending=True)  # maybe use descending=False 
-    sensitivity = sensitivity[row_order, :]   
-    w = w[row_order, :]
-    invrow = torch.argsort(row_order)
+    if use_rowreorder :
+        row_sums = sensitivity.sum(dim=1)            
+        row_order = torch.argsort(row_sums, descending=True)  # maybe use descending=False 
+        sensitivity = sensitivity[row_order, :]   
+        w = w[row_order, :]
+        invrow = torch.argsort(row_order)
 
     score, mask = direct_block(sensitivity, row_interval, q_group_size, bit = n_bit)
     score = score.to(w.device)
@@ -187,9 +189,10 @@ def pseudo_quantize_tensor(w, n_bit = None, zero_point=True, q_group_size=-1, in
     assert torch.isnan(w).sum() == 0
 
     w = w.reshape(dim1,dim2)
-
-    w = w[invrow, :]
-    w = w[:, invcol]
+    if use_rowreorder :
+        w = w[invrow, :]
+    if use_colreorder :
+        w = w[:, invcol]
 
     w = w.reshape(org_w_shape)
 
@@ -200,7 +203,7 @@ def pseudo_quantize_tensor(w, n_bit = None, zero_point=True, q_group_size=-1, in
     
 
 def clip_asym_pseudo_quantize_tensor(w, n_bit:float=2.75, zero_point=True, q_group_size=-1, 
-                                     inplace=False, get_scale_zp=False,linear_name = None,layer_idx=None,col_order = None, invcol = None,score= None):
+                                     inplace=False, get_scale_zp=False,in_channel = None,score= None):
     assert q_group_size != 0, "q_group_size should not be 0"
 
     if q_group_size == -1:
@@ -208,11 +211,7 @@ def clip_asym_pseudo_quantize_tensor(w, n_bit:float=2.75, zero_point=True, q_gro
 
     org_w_shape = w.shape
 
-    in_channel = len(col_order)
     w = w.reshape(-1,in_channel)
-
-    # w = w[:, col_order]
-
 
     
     if q_group_size > 0:
@@ -252,7 +251,6 @@ def clip_asym_pseudo_quantize_tensor(w, n_bit:float=2.75, zero_point=True, q_gro
     assert torch.isnan(w).sum() == 0
 
     w = w.reshape(-1,in_channel)
-    # w = w[:, invcol]
 
     w = w.reshape(org_w_shape)
 
@@ -274,6 +272,16 @@ class AWQ(BASE):
             self.wbits = kwargs.get('bit_allocation')
 
         self.clip_asym = kwargs.get('clip_asym', True)
+
+        self.use_rowreorder = kwargs.get('use_rowreorder', False)
+        print(f'whether use rowreorder : {self.use_rowreorder}')
+
+        self.use_colreorder = kwargs.get('use_colreorder', False)
+        print(f'whether use colreorder : {self.use_colreorder}')
+
+        self.row_interval = kwargs.get('row_interval', 32)
+        print(f'row_interval : {self.row_interval}')
+
         if self.clip_asym:
             print("Clipping asymmetrically")
         else:
@@ -311,15 +319,30 @@ class AWQ(BASE):
         self.model.model.norm = self.model.model.norm.to(self.dev)
         self.model.model.rotary_emb = self.model.model.rotary_emb.to(self.dev)
 
+
         class Catcher(nn.Module):
             def __init__(self, module):
                 super().__init__()
                 self.module = module
-
             def forward(self, inp, **kwargs):
                 inps.append(inp)
                 layer_kwargs.update(kwargs)
-                raise ValueError  # early exit to break later inference
+                raise ValueError
+            def __getattr__(self, name):
+                try:
+                    return super().__getattr__(name)
+                except AttributeError:
+                    return getattr(self.module, name)
+
+        # class Catcher(nn.Module):
+        #     def __init__(self, module):
+        #         super().__init__()
+        #         self.module = module
+
+        #     def forward(self, inp, **kwargs):
+        #         inps.append(inp)
+        #         layer_kwargs.update(kwargs)
+        #         raise ValueError  # early exit to break later inference
 
         # patch layer 0 to catch input and kwargs
         layers[0] = Catcher(layers[0])
@@ -433,9 +456,12 @@ class AWQ(BASE):
                 p,
                 n_bit=bit,
                 q_group_size=self.group_size,
+                use_colreorder=self.use_colreorder,
+                use_rowreorder=self.use_rowreorder,
                 sensitivity_path=self.sensitivity_path,
                 linear_name=linear_name,
-                layer_idx = layer_idx
+                layer_idx = layer_idx,
+                row_interval=self.row_interval
             ).detach()
 
         if "use_cache" in module_kwargs:
@@ -487,7 +513,6 @@ class AWQ(BASE):
                     else:
                         mb = module_bit
 
-                    print(f'{key} : bit {mb}')
 
                     if self.do_owq and self.is_owq(module_bit):
                         if fc_name in owq_layer:
@@ -550,8 +575,8 @@ class AWQ(BASE):
 
         scales_list = []  # return the searched scales
 
-        if isinstance(module, LlamaDecoderLayer) or isinstance(module, LlamaDecoderSkipLayer):
-            if isinstance(module, LlamaDecoderLayer) or module.attn_skipped is False:
+        if isinstance(module, LlamaDecoderLayer) or isinstance(module, LlamaDecoderSkipLayer) or isinstance(module, Qwen3DecoderLayer):
+            if isinstance(module, (LlamaDecoderLayer, Qwen3DecoderLayer)) or module.attn_skipped is False:
                 # attention input
                 scales_list.append(
                     _auto_get_scale(
@@ -590,7 +615,7 @@ class AWQ(BASE):
                             layer_idx=layer_idx,
                         )
                     )
-            if isinstance(module, LlamaDecoderLayer) or module.mlp_skipped is False:
+            if isinstance(module, (LlamaDecoderLayer, Qwen3DecoderLayer)) or module.mlp_skipped is False:
                 # fc1
                 scales_list.append(
                     _auto_get_scale(
@@ -640,7 +665,7 @@ class AWQ(BASE):
             if isinstance(prev_op, nn.Linear):
                 assert len(layers) == 1
                 scale_fc_fc(prev_op, layers[0], scales)
-            elif isinstance(prev_op, (nn.LayerNorm, LlamaRMSNorm)):
+            elif isinstance(prev_op, (nn.LayerNorm, LlamaRMSNorm, Qwen3RMSNorm)):
                 scale_ln_fcs(prev_op, layers, scales)
             elif isinstance(prev_op, (nn.GELU, BloomGelu, GELUActivation)):
                 new_module = self.ScaledActivation(prev_op, scales)
@@ -679,7 +704,6 @@ class AWQ(BASE):
             else:
                 mb = module_bit
 
-            print(f'{key} : bit {mb}')
 
             q_config['q_group_size'] = self.group_size
             max_val, min_val = self.auto_clip_layer_asym(
@@ -710,33 +734,37 @@ class AWQ(BASE):
         sensitivity = np.load(f'{self.sensitivity_path}/model.layers.{layer_idx}.{linear_name}.npy')
         sensitivity = torch.tensor(sensitivity,dtype=w.dtype,device=w.device)
 
-        row_interval  = 32
+        if self.use_colreorder :
 
-        col_sums = sensitivity.sum(dim=0)            
-        col_order = torch.argsort(col_sums, descending=True) # maybe use descending=False 
-        sensitivity = sensitivity[:, col_order] 
-        invcol = torch.argsort(col_order)
+            col_sums = sensitivity.sum(dim=0)            
+            col_order = torch.argsort(col_sums, descending=True) # maybe use descending=False 
+            sensitivity = sensitivity[:, col_order] 
+            invcol = torch.argsort(col_order)
 
-        row_sums = sensitivity.sum(dim=1)            
-        row_order = torch.argsort(row_sums, descending=True)  # maybe use descending=False 
-        sensitivity = sensitivity[row_order, :]   
-        invrow = torch.argsort(row_order)
+        if self.use_rowreorder :
+            row_sums = sensitivity.sum(dim=1)            
+            row_order = torch.argsort(row_sums, descending=True)  # maybe use descending=False 
+            sensitivity = sensitivity[row_order, :]   
+            invrow = torch.argsort(row_order)
 
-        score, mask = direct_block(sensitivity, row_interval, group_size, bit = n_bit)
+        score, mask = direct_block(sensitivity, self.row_interval, group_size, bit = n_bit)
         score = score.to(w.device)
 
-        score = score[invrow, :]
+        if self.use_rowreorder :
+            score = score[invrow, :]
 
 
         input_feat = input_feat.view(-1, input_feat.shape[-1])
 
-        input_feat  = input_feat[:, col_order.to(input_feat.device)]    # maybe use col_order
+        if self.use_colreorder :
+            input_feat  = input_feat[:, col_order.to(input_feat.device)]    # maybe use col_order
 
         input_feat = input_feat.reshape(1, input_feat.shape[0], -1, group_size)
         input_feat = input_feat[:, 0 :: input_feat.shape[1] // n_sample_token]
         input_feat = input_feat.to(w.device)
 
-        w = w[:, col_order]    # maybe use col_order
+        if self.use_colreorder :
+            w = w[:, col_order]    # maybe use col_order
         w = w.reshape(w.shape[0], 1, -1, group_size)
 
 
@@ -781,7 +809,7 @@ class AWQ(BASE):
                 cur_w = torch.clamp(w, min_val, max_val)
 
                 
-                q_w = clip_asym_pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config,linear_name=linear_name,layer_idx=layer_idx,col_order = col_order,invcol = invcol,score = score[i_b*oc_batch_size:(i_b+1)*oc_batch_size, :])  # co, 1, n_group, group size
+                q_w = clip_asym_pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config, in_channel = org_w_shape[1] ,score = score[i_b*oc_batch_size:(i_b+1)*oc_batch_size, :])  # co, 1, n_group, group size
 
 
                 if owq_column is not None:
@@ -830,20 +858,20 @@ class AWQ(BASE):
                 sensitivity = np.load(f'{self.sensitivity_path}/{name}.npy')
 
             sensitivity = torch.tensor(sensitivity,dtype=layer.weight.dtype,device=layer.weight.device)
-
-            col_sums = sensitivity.sum(dim=0)            
-            col_order = torch.argsort(col_sums, descending=True)  # maybe use descending=False 
-            sensitivity = sensitivity[:, col_order] 
-            invcol = torch.argsort(col_order)
-
-            layer.weight.data = layer.weight.data[:,col_order]
+            if self.use_colreorder :
+                col_sums = sensitivity.sum(dim=0)            
+                col_order = torch.argsort(col_sums, descending=True)  # maybe use descending=False 
+                sensitivity = sensitivity[:, col_order] 
+                invcol = torch.argsort(col_order)
+                layer.weight.data = layer.weight.data[:,col_order]
 
 
             layer.weight.data = layer.weight.data.reshape(*max_val.shape[:2], -1)            
             layer.weight.data = torch.clamp(layer.weight.data, min_val, max_val)
             layer.weight.data = layer.weight.data.reshape(org_shape)
 
-            layer.weight.data = layer.weight.data[:, invcol]
+            if self.use_colreorder :
+                layer.weight.data = layer.weight.data[:, invcol]
 
 
             if self.do_owq and owq_layer is not None and name in owq_layer:
@@ -980,7 +1008,9 @@ class AWQ(BASE):
                     m.to(self.dev)
                     m.weight.data = pseudo_quantize_tensor(
                         m.weight.data, n_bit = n_bit,
-                        q_group_size = self.group_size,sensitivity_path=self.sensitivity_path,linear_name=n,layer_idx = i
+                        q_group_size = self.group_size, use_rowreorder=self.use_rowreorder, use_colreorder=self.use_colreorder,
+                        sensitivity_path=self.sensitivity_path, linear_name=n, layer_idx = i,
+                        row_interval=self.row_interval
                     )
                     m.cpu()
 
@@ -1000,7 +1030,9 @@ class AWQ(BASE):
                         n_bit = self.wbits
                     m.weight.data = pseudo_quantize_tensor(
                         m.weight.data, n_bit=n_bit,
-                        q_group_size = self.group_size,sensitivity_path=self.sensitivity_path,linear_name=n,layer_idx = i
+                        q_group_size = self.group_size, use_rowreorder=self.use_rowreorder, use_colreorder=self.use_colreorder,
+                        sensitivity_path=self.sensitivity_path, linear_name=n, layer_idx = i,
+                        row_interval=self.row_interval
                     )
                     m.cpu()
         self.model = self.model.half()
@@ -1036,9 +1068,20 @@ if __name__ == '__main__' :
     )
 
     parser.add_argument(
+        '--use_colreorder', action='store_true',
+        help='whether use colreorder'
+    )
+
+    parser.add_argument(
+        '--use_rowreorder', action='store_true',
+        help='whether use rowreorder'
+    )
+
+    parser.add_argument(
         '--bit_allocation', type=str, default=None,
         help='bit allocation json file.'
     )
+
     parser.add_argument(
         '--clip_asym', action='store_true',
         help='whether to use clip_asym'
@@ -1047,6 +1090,11 @@ if __name__ == '__main__' :
     parser.add_argument(
         '--wbits', type=float, default= None,
         help='args.wbits'
+    )
+
+    parser.add_argument(
+        '--row_interval', type=int, default=32,
+        help='row interval for block quantization'
     )
 
     parser.add_argument(
@@ -1071,15 +1119,17 @@ if __name__ == '__main__' :
         bit_allocation = None
 
     awq_model = AWQ(args.model_name,None,None,'cpu', args.groupsize,clip_asym = args.clip_asym, 
-                    wbits = args.wbits, sensitivity_path=args.sensitivity_path, bit_allocation=bit_allocation)
+                    wbits = args.wbits, sensitivity_path=args.sensitivity_path, 
+                    bit_allocation=bit_allocation, use_colreorder = args.use_colreorder,use_rowreorder=args.use_rowreorder,
+                    row_interval = args.row_interval)
 
     if args.wbits is not None :
-        save_dir = args.save + f'/{args.wbits}_{args.groupsize}'
+        save_dir = args.save + f'/{args.wbits}_{args.groupsize}_{args.row_interval}'
     else :
         max_bit = max(bit_allocation.values())
         min_bit = min(bit_allocation.values())
         bit_range = f'{min_bit}_{max_bit}'
-        save_dir = args.save + f'/{bit_range}_{args.groupsize}'
+        save_dir = args.save + f'/{bit_range}_{args.groupsize}_{args.row_interval}'
 
 
     awq_model.run(nsamples=128,seqlen=512,save_path=save_dir)
