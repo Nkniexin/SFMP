@@ -8,6 +8,7 @@ from transformers.activations import GELUActivation
 import numpy as np
 import json
 import os
+import time
 
 # import sys
 # sys.path.append('..')
@@ -24,6 +25,7 @@ from copy import deepcopy
 
 from collections import defaultdict
 from QuantLinear import QuantLinear
+from bitallocation import bit_allocation, calculate_average_bit
 
 def assign_importance_levels(importance, bit :float = 3.5):
 
@@ -348,11 +350,9 @@ class AWQ(BASE):
         super().__init__(model_name, config, arch, device_map=device_map, group_size=group_size, dev=dev, prune=prune, do_owq=do_owq)
         self.method = 'awq'
         self.sensitivity_path = kwargs.get('sensitivity_path', None)
-
-        if kwargs.get('wbits', None) is not None :
-            self.wbits = kwargs.get('wbits')
-        else :
-            self.wbits = kwargs.get('bit_allocation')
+        
+        self.wbits = kwargs.get('wbits', None)
+        assert self.wbits is not None,'wbits must be specified'
 
         self.clip_asym = kwargs.get('clip_asym', True)
 
@@ -1178,8 +1178,8 @@ if __name__ == '__main__' :
     )
 
     parser.add_argument(
-        '--bit_allocation', type=str, default=None,
-        help='bit allocation json file.'
+        '--use_bitallocation', action='store_true',
+        help='whether use bitallocation'
     )
 
     parser.add_argument(
@@ -1219,30 +1219,38 @@ if __name__ == '__main__' :
 
     args = parser.parse_args()
 
-    assert not (args.bit_allocation is None and args.wbits is None), 'please set bit_allocation or wbits, set only one of them'
-    assert not (args.bit_allocation is not None and args.wbits is not None), "Please set either bit_allocation or wbits, not both."
+    if args.use_bitallocation:
 
-    if args.bit_allocation is not None:
-        with open(args.bit_allocation,'r') as f:
-            bit_allocation = json.load(f)
+        print("====================Using bit allocation======================")
+        wbits = bit_allocation(model_path = args.model_name,sensitivity_path = args.sensitivity_path,bit = args.wbits,
+                               use_colreorder=args.use_colreorder, use_rowreorder = args.use_rowreorder,row_interval=args.row_interval,
+                               groupsize=args.groupsize)
+
+        real_avebits = calculate_average_bit(model_path = args.model_name,sensitivity_path = args.sensitivity_path,bit_allocation = wbits)
+        
+        print("Average bit:",real_avebits)
+        
     else :
-        bit_allocation = None
+        wbits =args.wbits
 
     awq_model = AWQ(args.model_name, None, None, 'auto', args.groupsize, clip_asym = args.clip_asym, 
-                    wbits = args.wbits, sensitivity_path=args.sensitivity_path, 
-                    bit_allocation=bit_allocation, use_colreorder = args.use_colreorder, use_rowreorder=args.use_rowreorder,
+                    wbits = wbits, sensitivity_path=args.sensitivity_path, 
+                    use_colreorder = args.use_colreorder, use_rowreorder=args.use_rowreorder,
                     row_interval = args.row_interval)
 
-    if args.wbits is not None :
-        save_dir = args.save + f'/{args.wbits}_{args.groupsize}_{args.row_interval}'
+
+    if args.use_bitallocation:
+        flag = 'bitallocation'
     else :
-        max_bit = max(bit_allocation.values())
-        min_bit = min(bit_allocation.values())
-        bit_range = f'{min_bit}_{max_bit}'
-        save_dir = args.save + f'/{bit_range}_{args.groupsize}_{args.row_interval}'
+        flag = 'normal'
 
+    # save_dir = args.save + f'/{args.wbits}_{args.groupsize}_{args.row_interval}_{flag}'
+    save_dir = args.save 
 
+    tick = time.time()
     awq_model.run(nsamples=128,seqlen=512,real_quant = args.real_quant,awq_results_cache=args.awq_results_cache,save_path=save_dir)
+
+    print(f'quantization time : {time.time() - tick} s')
 
 
 
