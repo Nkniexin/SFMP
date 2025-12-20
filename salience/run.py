@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 from transformers import Trainer
 
 from tqdm import tqdm
+from sensitivity import save_linear_weights
 
 @dataclass
 class ModelArguments:
@@ -100,12 +101,14 @@ def train():
         for module in get_modules(layer):
             module.weight.data = module.weight.grad
 
+    save_linear_weights(model, training_args.output_dir)
+
     print(f"saving model gradient at {training_args.output_dir}")
-    model.save_pretrained(training_args.output_dir)
+    # model.save_pretrained(training_args.output_dir)
 
 
 if __name__ == "__main__":
     import time 
     tick = time.time()
     train()
-    print("Total time:", time.time() - tick)
+    print("Total time:", time.time() - tick, 's')
