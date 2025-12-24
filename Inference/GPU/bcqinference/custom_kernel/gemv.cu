@@ -13,11 +13,12 @@
 #include "anyprec.h"
 #include "anybcq.h"
 #include "datatype.h"
+#include <iostream>
 
 // AnyBCQ
 #define K_TILE_SIZE 64
-#define NUM_THREADS 256
-#define M_TILE_SIZE 1024
+#define NUM_THREADS 128
+#define M_TILE_SIZE 512
 
 #define K_TILE_SIZE_DEQUANT 4
 #define NUM_THREADS_DEQUANT 64
@@ -149,9 +150,10 @@ void anybcq_gemv_templated(
     torch::Tensor q_weight,
     torch::Tensor alpha,
     torch::Tensor q_bias,
-    int bitwidth,
-    int max_num_bits,
+    torch::Tensor block_bitwidth,
+    torch::Tensor offset,
     int group_size,
+    int outfeature_interval,
     cudaStream_t stream
 ) {
     uint32_t kSize = input.size(2);
@@ -167,7 +169,10 @@ void anybcq_gemv_templated(
         (__half*) q_bias.data_ptr<at::Half>(),
         (__half*) input.data_ptr<at::Half>(),
         (__half*) output.data_ptr<at::Half>(),
-        mSize, kSize, bitwidth, max_num_bits, group_size
+        mSize, kSize,
+        (int8_t*) block_bitwidth.data_ptr<int8_t>(), 
+        (uint32_t*) offset.data_ptr<int32_t>(),
+        group_size, outfeature_interval
     );
 
     cudaError_t err = cudaGetLastError();
@@ -180,12 +185,13 @@ void anybcq_gemv_stream(
     torch::Tensor q_weight,
     torch::Tensor alpha,
     torch::Tensor q_bias,
-    int bitwidth,
-    int max_num_bits,
+    torch::Tensor block_bitwidth,
+    torch::Tensor offset,
     int group_size,
+    int outfeature_interval,
     cudaStream_t stream
 ) {
-    TORCH_CHECK(bitwidth >= 1 && bitwidth <= 8, "Bitwidth must be between 1 and 8.");
+
     TORCH_CHECK(input.scalar_type() == alpha.scalar_type() && input.scalar_type() == q_bias.scalar_type() && input.scalar_type() == output.scalar_type(), "Mismatched data types between input, alpha, q_bias, and output tensors.");
     // Check that input is of shape (batch_size, seq_len, input_feat)
     TORCH_CHECK(input.dim() == 3, "input tensor must be of shape (batch_size, seq_len, input_feat).");
@@ -212,11 +218,11 @@ void anybcq_gemv_stream(
     uint32_t mSize = output.size(2);
     uint32_t num_groups = kSize / group_size;
 
-    TORCH_CHECK(alpha.dim() == 3 && alpha.size(0) == num_groups && alpha.size(1) == bitwidth && alpha.size(2) == mSize, 
-                "alpha tensor must be of shape (num_groups, bitwidth, output_feat). Expected (", num_groups, ", ", bitwidth, ", ", mSize, "), got (", alpha.size(0), ", ", alpha.size(1), ", ", alpha.size(2), ").");
+    TORCH_CHECK(alpha.dim() == 2 && alpha.size(0) == num_groups  && alpha.size(1) == mSize, 
+                "alpha tensor must be of shape (num_groups, bitwidth, output_feat). Expected (", num_groups, ", ", mSize, "), got (", alpha.size(0), ", ", alpha.size(1), ").");
 
     auto dtype = input.scalar_type();
-    anybcq_gemv_templated(input, output, q_weight, alpha, q_bias, bitwidth, max_num_bits, group_size, stream);
+    anybcq_gemv_templated(input, output, q_weight, alpha, q_bias, block_bitwidth, offset, group_size, outfeature_interval, stream);
 }
 
 void anybcq_gemv(
@@ -225,28 +231,30 @@ void anybcq_gemv(
     torch::Tensor q_weight,
     torch::Tensor alpha,
     torch::Tensor q_bias,
-    int bitwidth,
-    int max_num_bits,
-    int group_size
+    torch::Tensor block_bitwidth,
+    torch::Tensor offset,
+    int group_size,
+    int outfeature_interval
 ) {
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    anybcq_gemv_stream(input, output, q_weight, alpha, q_bias, bitwidth, max_num_bits, group_size, stream);
+    anybcq_gemv_stream(input, output, q_weight, alpha, q_bias, block_bitwidth, offset, group_size, outfeature_interval,stream);
 }
 
 torch::Tensor anybcq_dequant(
     torch::Tensor q_weight,
     torch::Tensor alpha,
     torch::Tensor q_bias,
-    int bitwidth,
-    int max_num_bits,
-    int group_size
+    torch::Tensor block_bitwidth,
+    torch::Tensor offset,
+    int group_size,
+    int outfeature_interval
 ) {
     HANDLE_ERROR(cudaSetDevice(q_weight.device().index()));
 
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-    const int mSize = q_weight.size(2);
-    const int kSize = q_weight.size(0) * 32;
+    const int mSize = alpha.size(1);
+    const int kSize = alpha.size(0) * group_size;
 
     auto options = torch::TensorOptions().dtype(torch::kHalf).device(q_weight.device());
     at::Tensor weight = torch::empty({kSize, mSize}, options);
@@ -259,7 +267,11 @@ torch::Tensor anybcq_dequant(
         (__half*) alpha.data_ptr<at::Half>(),
         (__half*) q_bias.data_ptr<at::Half>(),
         (__half*) weight.data_ptr<at::Half>(),
-        mSize, kSize, bitwidth, max_num_bits, group_size
+        mSize,kSize,
+        (int8_t* ) block_bitwidth.data_ptr<int8_t>(),
+        (int32_t*) offset.data_ptr<int32_t>(), 
+        group_size,
+        outfeature_interval
     );
 
     return weight;

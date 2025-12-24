@@ -30,9 +30,10 @@ void anybcq_gemv(
     torch::Tensor q_weight,
     torch::Tensor alpha,
     torch::Tensor q_bias,
-    int bitwidth,
-    int max_num_bits,
-    int group_size
+    torch::Tensor block_bitwidth,
+    torch::Tensor offset,
+    int group_size,
+    int outfeature_interval
 );
 
 torch::Tensor anyprec_dequant(
@@ -45,9 +46,10 @@ torch::Tensor anybcq_dequant(
     torch::Tensor q_weight,
     torch::Tensor alpha,
     torch::Tensor q_bias,
-    int bitwidth,
-    int max_num_bits,
-    int group_size
+    torch::Tensor block_bitwidth,
+    torch::Tensor offset,
+    int group_size,
+    int outfeature_interval
 );
 
 #endif 

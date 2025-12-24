@@ -17,8 +17,8 @@
 #include <assert.h>
 
 #define K_TILE_SIZE 64
-#define NUM_THREADS 256
-#define M_TILE_SIZE 1024
+#define NUM_THREADS 128
+#define M_TILE_SIZE 512
 
 #define K_TILE_SIZE_DEQUANT 4
 #define NUM_THREADS_DEQUANT 64
@@ -28,16 +28,17 @@
 
 
 __global__ void nqmv_bias(
-    const uint32_t* q_weight, // quantized weights, W[kSize/32][nb][mSize]
-    const __half* alpha, // alpha[num_groups][nb][mSize]
+    const uint32_t* q_weight, // quantized weights, W[kSize // group_size][ mSize // M_TILE_SIZE][groupsize // 32][nb][M_TILE_SIZE]
+    const __half* alpha, // alpha[num_groups][mSize]
     const __half* q_bias, // q_bias[num_groups][mSize]
     const __half* input, // input[kSize]
     __half* output, // output[mSize]
     const int M, // mSize
     const int K, // kSize
-    const int precision, // nb
-    const int max_num_bits, // nb
-    const int group_size // group_size
+    const int8_t* block_width, // block_width[num_groups][mSize // M_TILE_SIZE]
+    const uint32_t* offset, // offset[num_groups][mSize // M_TILE_SIZE]
+    const int group_size, // group_size
+    const int outfeature_interval // outfeature_interval, actually == M_TILE_SIZE
 ) {
     // Optimize shared memory layout to avoid bank conflicts
     __shared__ __half lut[K_TILE_SIZE/8][256];
@@ -89,7 +90,21 @@ __global__ void nqmv_bias(
     const int m_end = min((blockIdx.x + 1) * M_TILE_SIZE, M);
     const int m_step = blockDim.x * 2;
 
-    const uint32_t* __restrict__ bW = &q_weight[blockIdx.y * K_TILE_SIZE / 32 * max_num_bits * M];
+   
+
+    
+
+    const int offset_x = blockIdx.x;
+    const int offset_y = blockIdx.y * K_TILE_SIZE / group_size;
+
+    const int weight_m_start = offset_x * M_TILE_SIZE;
+
+    const int k_start =  (blockIdx.y * K_TILE_SIZE - offset_y * group_size ) / 32 ;
+
+    const int precision = block_width[offset_y* M / M_TILE_SIZE + offset_x];
+
+    // const uint32_t* __restrict__ bW = &q_weight[blockIdx.y * K_TILE_SIZE / 32 * max_num_bits * M];
+    const uint32_t* __restrict__ bW = &q_weight[offset[offset_y* M / M_TILE_SIZE + offset_x]];
     const int group_idx = (blockIdx.y * K_TILE_SIZE) / group_size;
     for (int m = m_start; m < m_end; m += m_step) {
         __half2 acc = __halves2half2(0,0);
@@ -117,7 +132,7 @@ __global__ void nqmv_bias(
             #pragma unroll
             for (int kt = 0; kt < K_TILE_SIZE/32; ++kt) {
                 // Use vectorized loads for weights
-                const uint64_t w_pair = ((const uint64_t*)&bW[kt*max_num_bits*M + b*M + m])[0];
+                const uint64_t w_pair = ((const uint64_t*)&bW[(k_start + kt)*precision*M_TILE_SIZE + b*M_TILE_SIZE + (m - weight_m_start)])[0];
                 const uint32_t w0 = (uint32_t)w_pair;
                 const uint32_t w1 = (uint32_t)(w_pair >> 32);
                 
@@ -133,7 +148,7 @@ __global__ void nqmv_bias(
             }
             
             // Use vectorized load for alpha values
-            const __half2 a = ((const __half2*)&alpha[group_idx*precision*M + b*M + m])[0];
+            const __half2 a = __hmul2(((const __half2*)&alpha[group_idx*M + m])[0] ,__float2half2_rn((float)(1 << b)));
             acc = __hfma2(a, t, acc);
         }
         // Use vectorized atomic add for better performance
@@ -142,15 +157,16 @@ __global__ void nqmv_bias(
  }
 
 __global__ void dequantize_t(
-    uint32_t* q_weight, // quantized weights, bW[kSize/32][nb][mSize]
-    __half* alpha, // alpha[num_groups][nb][mSize]
+    uint32_t* q_weight, // quantized weights, W[kSize // group_size][ mSize // M_TILE_SIZE][groupsize // 32][nb][M_TILE_SIZE]
+    __half* alpha, // alpha[num_groups][mSize]
     __half* q_bias, // q_bias[num_groups][mSize]
     __half* output, // dequantized weights,[kSize][mSize]
     int M, // mSize
     int K, // kSize
-    int precision, // nb
-    int max_num_bits, // nb
-    int group_size // group_size
+    int8_t* block_width, // block_width[num_groups][mSize // M_TILE_SIZE]
+    int32_t* offset, // offset[num_groups][mSize // M_TILE_SIZE]
+    int group_size, // group_size
+    int outfeature_interval // outfeature_interval, actually == M_TILE_SIZE
 ){
     int m_step = blockDim.y;
 
@@ -166,14 +182,36 @@ __global__ void dequantize_t(
 
     int g_idx = (blockIdx.x * K_TILE_SIZE_DEQUANT/group_size);
 
+    const int offset_x = g_idx;
+    const int offset_y = blockIdx.y * M_TILE_SIZE_DEQUANT / outfeature_interval;
+
+    const int weight_k_start = offset_x * group_size / 32;
+    const int weight_m_start = offset_y * outfeature_interval;
+
+    const int percision_idx = offset_x* M / outfeature_interval + offset_y;
+    const int precision = block_width[percision_idx];
+
+    int weight_start = offset[percision_idx];
+    
+    const uint32_t* __restrict__ bW = &q_weight[weight_start];
+
     for(int m = m_start;m<m_end;m += m_step){
         if(k < k_end){
             __half r = 0;
             for(int b = 0;b<precision;b++){
-                if((q_weight[tk * max_num_bits * M + b * M + m] >> t) & 1) r += alpha[g_idx * precision*M + b * M + m];
-                else                                             r -= alpha[g_idx * precision*M + b * M + m];
+
+                int idx = (tk-weight_k_start) * precision * outfeature_interval + b * outfeature_interval + (m - weight_m_start);
+
+                if((bW[idx] >> t) & 1){
+                     r += alpha[g_idx *M + m] * __float2half((float)(1<<b));
+                }
+                else {
+                    r -= alpha[g_idx *M + m] * __float2half((float)(1<<b));
+                }
             }
+            
             output[k * M + m] = r + q_bias[g_idx * M + m];
+
         }
     }
 }

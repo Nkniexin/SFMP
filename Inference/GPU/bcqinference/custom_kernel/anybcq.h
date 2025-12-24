@@ -17,28 +17,30 @@
 #include <cuda_runtime.h>
 
 __global__ void nqmv_bias(
-    const uint32_t* q_weight, // quantized weights, W[kSize/32][nb][mSize]
-    const __half* alpha, // alpha[num_groups][nb][mSize]
+    const uint32_t* q_weight, // quantized weights, W[kSize // group_size][ mSize // M_TILE_SIZE][groupsize // 32][nb][M_TILE_SIZE]
+    const __half* alpha, // alpha[num_groups][mSize]
     const __half* q_bias, // q_bias[num_groups][mSize]
     const __half* input, // input[kSize]
     __half* output, // output[mSize]
     const int M, // mSize
     const int K, // kSize
-    const int precision, // nb
-    const int max_num_bits, // nb
-    const int group_size // group_size
+    const int8_t* block_width, // block_width[num_groups][mSize // M_TILE_SIZE]
+    const uint32_t* offset, // offset[num_groups][mSize // M_TILE_SIZE]
+    const int group_size, // group_size
+    const int outfeature_interval // outfeature_interval, actually == M_TILE_SIZE
 );
 
 __global__ void dequantize_t(
-    uint32_t* q_weight, // quantized weights, bW[kSize/32][nb][mSize]
-    __half* alpha, // alpha[num_groups][nb][mSize]
+    uint32_t* q_weight, // quantized weights, W[kSize // group_size][ mSize // M_TILE_SIZE][groupsize // 32][nb][M_TILE_SIZE]
+    __half* alpha, // alpha[num_groups][mSize]
     __half* q_bias, // q_bias[num_groups][mSize]
     __half* output, // dequantized weights,[kSize][mSize]
     int M, // mSize
     int K, // kSize
-    int precision, // nb
-    int max_num_bits, // nb
-    int group_size // group_size
+    int8_t* block_width, // block_width[num_groups][mSize // M_TILE_SIZE]
+    int32_t* offset, // offset[num_groups][mSize // M_TILE_SIZE]
+    int group_size, // group_size
+    int outfeature_interval // outfeature_interval, actually == M_TILE_SIZE
 );
 
 #endif
