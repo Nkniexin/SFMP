@@ -22,8 +22,8 @@ def find_multiple(n: int, k: int) -> int:
         return n
     return n + k - (n % k)
 
-DEBUG_INIT = True
-# DEBUG_INIT = False
+# DEBUG_INIT = True
+DEBUG_INIT = False
 
 @dataclass
 class ModelArgs:
