@@ -23,18 +23,23 @@ class QuantLinear(nn.Module):
         **kwargs
     ):
         super().__init__()
-        assert bits <= 8.0 and type(bits) == float, "Only support bits <= 8 and float type"
+        assert bits <= 4.0 and type(bits) == float, "Only support bits <= 4 and float type"
         assert infeatures % group_size == 0 or group_size == -1, "infeatures must be divisible by group_size"
         assert outfeatures % outfeature_interval == 0, "outfeatures must be divisible by outfeature_interval"
 
         self.infeatures = infeatures
         self.outfeatures = outfeatures
         self.outfeature_interval = outfeature_interval  # row_interal
-
+        self.bits = bits
         self.low_bit  = math.floor(bits)  # b-
         self.high_bit = math.ceil(bits)   # b+
         self.group_size = group_size if group_size != -1 else infeatures
         self.maxq = 2 ** self.high_bit - 1
+
+        self.register_buffer(
+            'qweight_metadata_len', 
+            torch.tensor(0)
+        ) 
 
         self.register_buffer(
             'in_reorder',
@@ -79,6 +84,8 @@ class QuantLinear(nn.Module):
         self.zeros = zeros.half()
         self.block_bitwidth = block_bitwidth.to(torch.int8)
 
+        qweight_metadata_len = block_bitwidth.to(torch.int32).sum().item() *self.outfeature_interval * self.group_size // 32
+        self.qweight_metadata_len = torch.tensor(qweight_metadata_len)
     def forward(self, x):
 
         x = x[:, :, self.in_reorder]
@@ -94,7 +101,7 @@ class QuantLinear(nn.Module):
 def load_quantized_model(model_path, wbits, group_size, outfeature_interval):
     print(f"Loading quantized model from {model_path}")
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     config = AutoConfig.from_pretrained(model_path)
     with init_empty_weights():
         model = AutoModelForCausalLM.from_config(config=config,torch_dtype=torch.float16, trust_remote_code=True)
