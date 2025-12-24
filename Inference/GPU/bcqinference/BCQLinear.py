@@ -19,6 +19,8 @@ class BCQLinear(nn.Module):
         out_features,
         wbits, 
         group_size,
+        qweight_metadata_len = None,
+        outfeature_interval = None,
         bias=False, 
         dtype=torch.half):
         super().__init__()
@@ -32,26 +34,44 @@ class BCQLinear(nn.Module):
             self.group_size = group_size
         self.dtype = dtype
 
+        self.outfeature_interval = outfeature_interval
+
+
         self.register_buffer(
-            'qweight',
-            torch.empty(
-                (in_features//32, self.bits, out_features), 
-                dtype=torch.int32)
+            'in_reorder',
+            torch.zeros((in_features,), dtype=torch.int32)
         )
-        buf_name = f"alpha"
+
         self.register_buffer(
-            buf_name,
-            torch.empty(
-                (in_features // self.group_size, self.bits, out_features), 
-                dtype=dtype)
+            'out_reorder',
+            torch.zeros((out_features,), dtype=torch.int32)
         )
-        buf_name = f"beta"
+
+        
         self.register_buffer(
-            buf_name,
+            "alpha",
             torch.empty(
                 (in_features // self.group_size, out_features), 
                 dtype=dtype)
         )
+
+        self.register_buffer(
+            "beta",
+            torch.empty(
+                (in_features // self.group_size, out_features), 
+                dtype=dtype)
+        )
+
+        self.register_buffer(
+            'block_bitwidth',
+            torch.zeros((in_features // self.group_size, out_features // outfeature_interval), dtype=torch.int8)
+        )
+
+        self.register_buffer(
+            'offset',
+            torch.zeros(in_features // self.group_size * out_features // outfeature_interval, dtype=torch.int32)
+        )
+
         if bias:
             self.register_buffer(
                 "bias",
@@ -59,10 +79,20 @@ class BCQLinear(nn.Module):
             )
         else:
             self.bias = None
-
+        
         self.output = torch.zeros((1, 1, out_features), dtype=self.dtype, device='cuda')
 
-    def _gemm(self, x, w_bits, alpha, beta):
+    def init_qweightDataLen(self) :
+    
+        self.qweight_metadata_len =  self.block_bitwidth.sum().item() * self.group_size * self.outfeature_interval // 32
+    
+        self.register_buffer(
+            'qweight',
+            torch.zeros(self.qweight_metadata_len,dtype=torch.int32)
+        )
+
+    def _gemm(self, x, bits, alpha, beta, block_bitwidth, offset,
+                group_size, outfeature_interval):
         """
         x : (B, T, in_features)
         w_bits: precision
@@ -70,12 +100,16 @@ class BCQLinear(nn.Module):
         return -> (B, T, out_features)
         """
         B, T, _ = x.shape
-        weight = anybcq_dequant(
-            self.qweight, alpha, beta, w_bits, w_bits, self.group_size
-        )
 
+        weight = anybcq_dequant(
+            self.qweight, alpha, beta, block_bitwidth, offset,
+                group_size, outfeature_interval 
+        )
         x_flat = x.reshape(-1, self.in_features)
+        x_flat = x_flat[:, self.in_reorder]
+        
         y_flat = torch.matmul(x_flat, weight)
+        y_flat = y_flat[:, self.out_reorder]
 
         return y_flat.reshape(B, T, self.out_features)
 
@@ -87,14 +121,17 @@ class BCQLinear(nn.Module):
         
         if x.numel() // self.in_features == 1:
             self.output.zero_()
+            x = x[:,:,self.in_reorder]
             anybcq_gemv(
                 x, self.output,
-                self.qweight, self.alpha, self.beta,
-                self.bits, self.bits, self.group_size  # To be compatible with the operators of anybcq
+                self.qweight, self.alpha, self.beta, self.block_bitwidth, self.offset,
+                self.group_size, self.outfeature_interval  # To be compatible with the operators of anybcq
             )
-            out = self.output
+            
+            out = self.output[:,:,self.out_reorder]
         else:
-            out = self._gemm(x, self.bits, self.alpha, self.beta)
+            out = self._gemm(x, self.bits, self.alpha, self.beta, self.block_bitwidth, self.offset,
+                    self.group_size, self.outfeature_interval)
 
         if self.bias is not None:
             out += self.bias

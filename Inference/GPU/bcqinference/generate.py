@@ -227,7 +227,7 @@ def encode_bos(tokenizer, device=default_device):
 def load_model(model_name, device, backend,  
                 precision, random_init,
                 checkpoint_path, 
-                config_path=None, dtype=None, halve_layers=False, wbits:int = 4, group_size:int = -1):
+                config_path=None, dtype=None, halve_layers=False, wbits:int = 4, group_size:int = -1,outfeature_interval = None):
     use_cuda = 'cuda' in device
 
     linear_kwargs = {}
@@ -236,7 +236,7 @@ def load_model(model_name, device, backend,
             linear_class = BCQLinear
             linear_kwargs["wbits"] = wbits
             linear_kwargs['group_size'] = group_size
-            linear_kwargs['']
+            linear_kwargs['outfeature_interval'] = outfeature_interval
         case None:
             linear_class = nn.Linear
             assert (precision == 16)
@@ -250,11 +250,15 @@ def load_model(model_name, device, backend,
         fuse_linears=False
     )
 
+
     if not random_init:
-        # weight_path = os.path.join(checkpoint_path, "model.safetensors")
-        # checkpoint = load_file(weight_path)   
-        # state_dict = torch.load('/home/nku509/codes/SSD/ELUTQ/Efficient_Finetuning/bcqinference/new_model.bin')
-        # model.load_state_dict(state_dict, strict=False)
+        model = load_safetensors_state_dict(model, checkpoint_path)
+
+    for name, module in model.named_modules():
+        if isinstance(module, BCQLinear):
+            module.init_qweightDataLen()
+
+    if not random_init :
         model = load_safetensors_state_dict(model, checkpoint_path)
 
     print("Dispatching model to device ...", flush=True)
@@ -302,6 +306,7 @@ def main(
     backend = None,
     bitwidth = None,
     group_size: int = -1,
+    outfeature_interval = None,
     checkpoint_path = None,
     config_path = None,
     dtype = None,
@@ -322,7 +327,8 @@ def main(
     model, tokenizer = load_model(model_name, device, backend,
                                   bitwidth, random_init, 
                                   checkpoint_path, 
-                                  config_path, dtype,False,bitwidth,group_size)
+                                  config_path, dtype,False,bitwidth,group_size, outfeature_interval)
+    
 
     device_sync(device=device) # MKG
     print(f"Time to load model: {time.time() - t0:.02f} seconds", flush=True)
@@ -428,6 +434,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_name', type=str, default=None, help='model_name') 
     parser.add_argument('--bitwidth', type=int, default=None, help='bitwidth', choices=[2,3,4,16])
     parser.add_argument('--group_size', type=int, default=None, help='group size')
+    parser.add_argument('--outfeature_interval', type=int, default=None, help='outfeature interval')
     parser.add_argument('--checkpoint_path', type=str, default=None, help='checkpoint path')
     parser.add_argument('--config_path', type=str, default=None, help='QTIP config path')
     parser.add_argument('--dtype', type=str, default="float16", help='dtype', choices=["float16", "float32", "bfloat16"])
@@ -440,7 +447,7 @@ if __name__ == '__main__':
     main(
         args.prompt, args.num_samples, args.max_new_tokens, args.batch_size, args.top_k,
         args.temperature, args.compile, args.compile_prefill, args.profile, 
-        args.device, args.model_name, args.backend, args.bitwidth, args.group_size,
+        args.device, args.model_name, args.backend, args.bitwidth, args.group_size,args.outfeature_interval,
         args.checkpoint_path, args.config_path, 
         args.dtype, args.print_result, args.random_init
     )

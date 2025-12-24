@@ -11,9 +11,6 @@ import torch
 # -----------------------------------------------------
 # 配置
 # -----------------------------------------------------
-model_path = '/home/nku509/codes/SSD/ELUTQ/Efficient_Finetuning/output/bcq_model/Llama-3-8b-w3g128-1024-c4'
-output_dir = '/home/nku509/codes/SSD/ELUTQ/Efficient_Finetuning/bcqinference/new_model_safetensors'
-
 def convert_model(model_path:str = None, output_dir:str = None) :
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
@@ -99,30 +96,60 @@ def convert_model(model_path:str = None, output_dir:str = None) :
             f"model.layers.{i}.self_attn.q_proj.qweight": f"layers.{i}.attention.wq.qweight",
             f"model.layers.{i}.self_attn.q_proj.alpha": f"layers.{i}.attention.wq.alpha",
             f"model.layers.{i}.self_attn.q_proj.beta": f"layers.{i}.attention.wq.beta",
+            f"model.layers.{i}.self_attn.q_proj.in_reorder": f"layers.{i}.attention.wq.in_reorder",
+            f"model.layers.{i}.self_attn.q_proj.out_reorder": f"layers.{i}.attention.wq.out_reorder",
+            f"model.layers.{i}.self_attn.q_proj.block_bitwidth": f"layers.{i}.attention.wq.block_bitwidth",
+            f"model.layers.{i}.self_attn.q_proj.offset": f"layers.{i}.attention.wq.offset",
 
             f"model.layers.{i}.self_attn.k_proj.qweight": f"layers.{i}.attention.wk.qweight",
             f"model.layers.{i}.self_attn.k_proj.alpha": f"layers.{i}.attention.wk.alpha",
             f"model.layers.{i}.self_attn.k_proj.beta": f"layers.{i}.attention.wk.beta",
+            f"model.layers.{i}.self_attn.k_proj.in_reorder": f"layers.{i}.attention.wk.in_reorder",
+            f"model.layers.{i}.self_attn.k_proj.out_reorder": f"layers.{i}.attention.wk.out_reorder",
+            f"model.layers.{i}.self_attn.k_proj.block_bitwidth": f"layers.{i}.attention.wk.block_bitwidth",
+            f"model.layers.{i}.self_attn.k_proj.offset": f"layers.{i}.attention.wk.offset",
 
             f"model.layers.{i}.self_attn.v_proj.qweight": f"layers.{i}.attention.wv.qweight",
             f"model.layers.{i}.self_attn.v_proj.alpha": f"layers.{i}.attention.wv.alpha",
             f"model.layers.{i}.self_attn.v_proj.beta": f"layers.{i}.attention.wv.beta",
+            f"model.layers.{i}.self_attn.v_proj.in_reorder": f"layers.{i}.attention.wv.in_reorder",
+            f"model.layers.{i}.self_attn.v_proj.out_reorder": f"layers.{i}.attention.wv.out_reorder",
+            f"model.layers.{i}.self_attn.v_proj.block_bitwidth": f"layers.{i}.attention.wv.block_bitwidth",
+            f"model.layers.{i}.self_attn.v_proj.offset": f"layers.{i}.attention.wv.offset",
+
 
             f"model.layers.{i}.self_attn.o_proj.qweight": f"layers.{i}.attention.wo.qweight",
             f"model.layers.{i}.self_attn.o_proj.alpha": f"layers.{i}.attention.wo.alpha",
             f"model.layers.{i}.self_attn.o_proj.beta": f"layers.{i}.attention.wo.beta",
+            f"model.layers.{i}.self_attn.o_proj.in_reorder": f"layers.{i}.attention.wo.in_reorder",
+            f"model.layers.{i}.self_attn.o_proj.out_reorder": f"layers.{i}.attention.wo.out_reorder",
+            f"model.layers.{i}.self_attn.o_proj.block_bitwidth": f"layers.{i}.attention.wo.block_bitwidth",
+            f"model.layers.{i}.self_attn.o_proj.offset": f"layers.{i}.attention.wo.offset",
 
             f"model.layers.{i}.mlp.gate_proj.qweight": f"layers.{i}.feed_forward.w1.qweight",
             f"model.layers.{i}.mlp.gate_proj.alpha": f"layers.{i}.feed_forward.w1.alpha",
             f"model.layers.{i}.mlp.gate_proj.beta": f"layers.{i}.feed_forward.w1.beta",
+            f"model.layers.{i}.mlp.gate_proj.in_reorder": f"layers.{i}.feed_forward.w1.in_reorder",
+            f"model.layers.{i}.mlp.gate_proj.out_reorder": f"layers.{i}.feed_forward.w1.out_reorder",
+            f"model.layers.{i}.mlp.gate_proj.block_bitwidth": f"layers.{i}.feed_forward.w1.block_bitwidth",
+            f"model.layers.{i}.mlp.gate_proj.offset": f"layers.{i}.feed_forward.w1.offset",
 
             f"model.layers.{i}.mlp.up_proj.qweight": f"layers.{i}.feed_forward.w3.qweight",
             f"model.layers.{i}.mlp.up_proj.alpha": f"layers.{i}.feed_forward.w3.alpha",
             f"model.layers.{i}.mlp.up_proj.beta": f"layers.{i}.feed_forward.w3.beta",
+            f"model.layers.{i}.mlp.up_proj.in_reorder": f"layers.{i}.feed_forward.w3.in_reorder",
+            f"model.layers.{i}.mlp.up_proj.out_reorder": f"layers.{i}.feed_forward.w3.out_reorder",
+            f"model.layers.{i}.mlp.up_proj.block_bitwidth": f"layers.{i}.feed_forward.w3.block_bitwidth",
+            f"model.layers.{i}.mlp.up_proj.offset": f"layers.{i}.feed_forward.w3.offset",
+
 
             f"model.layers.{i}.mlp.down_proj.qweight": f"layers.{i}.feed_forward.w2.qweight",
             f"model.layers.{i}.mlp.down_proj.alpha": f"layers.{i}.feed_forward.w2.alpha",
             f"model.layers.{i}.mlp.down_proj.beta": f"layers.{i}.feed_forward.w2.beta",
+            f"model.layers.{i}.mlp.down_proj.in_reorder": f"layers.{i}.feed_forward.w2.in_reorder",
+            f"model.layers.{i}.mlp.down_proj.out_reorder": f"layers.{i}.feed_forward.w2.out_reorder",
+            f"model.layers.{i}.mlp.down_proj.block_bitwidth": f"layers.{i}.feed_forward.w2.block_bitwidth",
+            f"model.layers.{i}.mlp.down_proj.offset": f"layers.{i}.feed_forward.w2.offset",
 
             f"model.layers.{i}.input_layernorm.weight": f"layers.{i}.input_layernorm.weight",
             f"model.layers.{i}.post_attention_layernorm.weight": f"layers.{i}.post_attention_layernorm.weight",
