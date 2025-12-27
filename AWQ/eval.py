@@ -23,7 +23,8 @@ def evaluate(model, tokenizer, args, logger):
     '''
     # import pdb;pdb.set_trace()
     block_class_name = model.model.layers[0].__class__.__name__
-    device_map = infer_auto_device_map(model, max_memory={i: args.max_memory for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
+    # device_map = infer_auto_device_map(model, max_memory={i: args.max_memory for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
+    device_map = {"":0}
     model = dispatch_model(model, device_map=device_map)
     results = {}
 
@@ -46,7 +47,7 @@ def evaluate(model, tokenizer, args, logger):
         results = lm_eval.simple_evaluate(
         model=model,
         tasks=task_list,
-        num_fewshot=0,
+        num_fewshot=args.num_fewshot,
         task_manager=task_manager,
         )
         logger.info(make_table(results))
@@ -111,6 +112,16 @@ if __name__ == '__main__':
     parser.add_argument(
         "--eval_tasks", type=str,default="", 
         help="exampe:piqa,arc_easy,arc_challenge,hellaswag,winogrande"
+    )
+
+    parser.add_argument(
+        "--eval_batch_size", type=int,default=16, 
+        help=""
+    )
+
+    parser.add_argument(
+        "--num_fewshot", type=int,default=0, 
+        help=""
     )
 
     args = parser.parse_args()
