@@ -1140,7 +1140,11 @@ class AWQ(BASE):
                 torch.save(awq_results, f'{awq_cache_path}/w{self.wbits}g{self.group_size}.pt')
         else :
             awq_results = torch.load(awq_results_cache,map_location='cpu')
-        self.load_model(device_map='cpu')
+        
+        del self.model
+        gc.collect()
+        
+        self.load_model(device_map='cpu',dtype=torch.float16)
         # self.model = simple_dispatch_model(self.model, self.device_map)
         # device_map = {"": 0}
         # self.model = dispatch_model(self.model, device_map)
