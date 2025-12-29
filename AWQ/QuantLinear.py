@@ -19,6 +19,7 @@ class QuantLinear(nn.Module):
         outfeature_interval,
         infeatures,
         outfeatures,
+        dtype,
         bias,
         **kwargs
     ):
@@ -35,6 +36,7 @@ class QuantLinear(nn.Module):
         self.high_bit = math.ceil(bits)   # b+
         self.group_size = group_size if group_size != -1 else infeatures
         self.maxq = 2 ** self.high_bit - 1
+        self.dtype = dtype
 
         self.register_buffer(
             'qweight_metadata_len', 
@@ -58,11 +60,11 @@ class QuantLinear(nn.Module):
 
         self.register_buffer(
             'scales',
-            torch.nn.Parameter(torch.zeros((infeatures // self.group_size, outfeatures), dtype=torch.float16))
+            torch.nn.Parameter(torch.zeros((infeatures // self.group_size, outfeatures), dtype=self.dtype))
         )
         self.register_buffer(
             'zeros',
-            torch.zeros((infeatures // self.group_size, outfeatures), dtype=torch.float16)
+            torch.zeros((infeatures // self.group_size, outfeatures), dtype=self.dtype)
         )
 
         self.register_buffer(
@@ -71,21 +73,27 @@ class QuantLinear(nn.Module):
         )
 
         if bias:
-            self.register_buffer('bias', torch.zeros((outfeatures), dtype=torch.float16))
+            self.register_buffer('bias', torch.zeros((outfeatures), dtype=self.dtype))
         else:
             self.bias = None
         
-    def pack(self, in_reorder, out_reorder, intweight, scales, zeros, block_bitwidth):
+    def pack(self, in_reorder, out_reorder, intweight, scales, zeros, block_bitwidth,bias):
 
         self.in_reorder = in_reorder.reshape(in_reorder.shape).to(torch.int32)
         self.out_reorder = out_reorder.reshape(out_reorder.shape).to(torch.int32)
         self.intweight = intweight.to(torch.int8)
-        self.scales = scales.half()
-        self.zeros = zeros.half()
+        self.scales = scales.to(self.dtype)
+        self.zeros = zeros.to(self.dtype)
         self.block_bitwidth = block_bitwidth.to(torch.int8)
 
         qweight_metadata_len = block_bitwidth.to(torch.int32).sum().item() *self.outfeature_interval * self.group_size // 32
         self.qweight_metadata_len = torch.tensor(qweight_metadata_len)
+
+        if bias is not None:
+            self.bias = bias.to(self.dtype)
+        else :
+            self.bias = None
+        
     def forward(self, x):
 
         x = x[:, :, self.in_reorder]
@@ -116,7 +124,7 @@ def load_quantized_model(model_path, wbits, group_size, outfeature_interval):
                 n_bits = wbits[key]
             else :
                 n_bits = wbits
-            q_linear = QuantLinear(n_bits, group_size, outfeature_interval, module.in_features,module.out_features,not module.bias is None)
+            q_linear = QuantLinear(n_bits, group_size, outfeature_interval, module.in_features,module.out_features,torch.float16,not module.bias is None)
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
     torch.cuda.empty_cache()
