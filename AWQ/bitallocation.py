@@ -56,7 +56,7 @@ def bit_allocation(model_path, sensitivity_path, bit, row_interval = None,groups
     with init_empty_weights():
         model = AutoModelForCausalLM.from_config(
             config=config,
-            torch_dtype=torch.float16,
+            dtype=config.dtype,
             trust_remote_code=True,        
         )
     for name, module in model.named_modules():
@@ -111,7 +111,7 @@ def calculate_average_bit(model_path, sensitivity_path,bit_allocation) :
         model = AutoModelForCausalLM.from_config(
             config=config,
             trust_remote_code=True,
-            torch_dtype=torch.float16,        
+            dtype=config.dtype,        
         )
 
     bit_sum = 0.0

@@ -1109,10 +1109,11 @@ class AWQ(BASE):
                             outfeature_interval=self.row_interval,
                             infeatures=m.in_features,
                             outfeatures=m.out_features,
+                            dtype = torch.float16,
                             bias=not m.bias is None
                         )
 
-                        new_linear.pack(in_reorder,out_reorder,intweight,scales,zeros,block_bitwidth)
+                        new_linear.pack(in_reorder,out_reorder,intweight,scales,zeros,block_bitwidth,m.bias)
                         new_linear.to(next(layer.parameters()).device)
                         self.set_op_by_name(layer, n, new_linear)
                         new_linear.cpu()
@@ -1141,10 +1142,7 @@ class AWQ(BASE):
         else :
             awq_results = torch.load(awq_results_cache,map_location='cpu')
         
-        del self.model
-        gc.collect()
-        
-        self.load_model(device_map='cpu',dtype=torch.float16)
+        self.load_model(device_map='cpu', dtype='auto')
         # self.model = simple_dispatch_model(self.model, self.device_map)
         # device_map = {"": 0}
         # self.model = dispatch_model(self.model, device_map)
