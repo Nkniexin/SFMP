@@ -143,7 +143,7 @@ def load_bcq_model(model_path, wbits, groupsize) :
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     config = AutoConfig.from_pretrained(model_path)
     with init_empty_weights():
-        model = AutoModelForCausalLM.from_config(config=config,torch_dtype=torch.float16, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_config(config=config,torch_dtype=config.dtype, trust_remote_code=True) 
     layers = model.model.layers
     for i in tqdm(range(len(layers))):
         layer = layers[i]
