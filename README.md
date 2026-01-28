@@ -12,7 +12,7 @@ This repository provides an official implementation of **SFMP**, a **search-free
 - **Multiple Quantization Methods**: Supports multiple quantization methods, including AWQ, GPTQ, EfficientQAT, and more.
 
 ## 🔧 Installation
-```
+```bash
 conda create -n sfmp python=3.11
 conda activate sfmp
 pip install -r requirements.txt
@@ -21,13 +21,13 @@ pip install -r requirements.txt
 ## 🚀 Usage Examples
 
 ### 0. Estimate Global Salience
-```
+```bash
 cd salience
 CUDA_VISIBLE_DEVICES=0 python run.py --output_dir llama3.1_8b_salience  --model_name path/to/llama3.1_8b_hf 
 ```
 
 ### 1. Bit Allocation and Run AWQ 
-```
+```bash
 cd AWQ
 
 # run mixed-precision quantization pipeline
@@ -59,13 +59,13 @@ CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-2.5 
 ## ⚡GPU Inference
 
 ### 0. Install CUDA kernel for LUT-Based GEMV
-```
+```bash
 cd Inference/GPU/bcqinference/custom_kernel
 source do_install.sh
 ```
 
 ### 1. Prepare for BCQ format
-```
+```bash
 cd AWQ
 python BCQLinear.py \
   --resume_quant llama3.1-8b-mixprecision-2.5 \
@@ -76,7 +76,7 @@ python BCQLinear.py \
 ```
 
 ### 2. convert to BCQModel
-```
+```bash
 cd Inference/GPU/bcqinference
 
 python convert_to_bcq.py \
@@ -86,7 +86,7 @@ python convert_to_bcq.py \
 
 ### 3. Throughput Evaluation
 
-```
+```bash
 cd Inference/GPU
 
 CUDA_VISIBLE_DEVICES=1 python generate.py 
