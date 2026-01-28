@@ -111,8 +111,8 @@ class BCQLinear(nn.Module):
     def pack_from_quantLinear(self, quantLinear : QuantLinear) :
         
         intweight = quantLinear.intweight
-        alpha = quantLinear.scales
-        beta = quantLinear.zeros
+        alpha = quantLinear.scales.to(self.dtype)
+        beta = quantLinear.zeros.to(self.dtype)
 
         if DeBug : 
             torch.save(intweight,'quantlinear_intweight.pt')
@@ -131,7 +131,7 @@ class BCQLinear(nn.Module):
         qweight_metadata_len = block_bitwidth.sum().item() * outfeature_interval * group_size / 32 # using torch.int32 to store
 
         if quantLinear.bias is not None:
-            bias = quantLinear.bias
+            bias = quantLinear.bias.to(self.dtype)
         else :
             bias = None
 
@@ -219,7 +219,7 @@ def export_bcq(model) :
         for name, module in named_linears.items() :
                 
                 bcq_linear = BCQLinear(module.infeatures, module.outfeatures, module.bits, module.group_size, module.qweight_metadata_len.item() ,module.outfeature_interval, 
-                                       module.bias if module.bias is not None else False,dtype=torch.float16)
+                                       module.bias if module.bias is not None else False,dtype=torch.float16)  # TODO: dtype maybe not float16
 
                 bcq_linear.pack_from_quantLinear(module)
 
@@ -237,7 +237,7 @@ if __name__ == '__main__' :
     parser.add_argument("--wbits", type=float, default=3.0, help="weights quantization bits")
     parser.add_argument("--bit_allocation", type=str, default=None, help="bit allocation json file path")
     parser.add_argument("--group_size", type=int, default=128, help="weights quantization group size")
-    parser.add_argument("--outfeature_interval", type=int, default=32, help="weight ")
+    parser.add_argument("--outfeature_interval", type=int, default=512, help="weight ")
     parser.add_argument("--save_path", type=str,help='bcq model save path')
 
     args = parser.parse_args()
@@ -256,7 +256,7 @@ if __name__ == '__main__' :
 
     model = export_bcq(model)
 
-    # model = model.half()
+    model = model.half()
     model.save_pretrained(args.save_path)
     tokenizer.save_pretrained(args.save_path)
 

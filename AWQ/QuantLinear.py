@@ -112,7 +112,7 @@ def load_quantized_model(model_path, wbits, group_size, outfeature_interval):
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     config = AutoConfig.from_pretrained(model_path)
     with init_empty_weights():
-        model = AutoModelForCausalLM.from_config(config=config,torch_dtype=torch.float16, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_config(config=config,torch_dtype=config.dtype, trust_remote_code=True)
     layers = model.model.layers
     for i in tqdm(range(len(layers))):
         layer = layers[i]
@@ -124,7 +124,7 @@ def load_quantized_model(model_path, wbits, group_size, outfeature_interval):
                 n_bits = wbits[key]
             else :
                 n_bits = wbits
-            q_linear = QuantLinear(n_bits, group_size, outfeature_interval, module.in_features,module.out_features,torch.float16,not module.bias is None)
+            q_linear = QuantLinear(n_bits, group_size, outfeature_interval, module.in_features,module.out_features,config.dtype,not module.bias is None)
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
     torch.cuda.empty_cache()

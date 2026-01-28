@@ -119,7 +119,7 @@ def get_owq_calib_dataset(data="c4", tokenizer=None, n_samples=128, seed=0, seql
     return trainloader
 
 class BASE:
-    def __init__(self, model_name, config, arch, device_map, dtype='auto', dev='cuda', group_size=128, prune=False, do_owq=False, outlier_path=None):
+    def __init__(self, model_name, config, arch, device_map, dtype=torch.float16, dev='cuda', group_size=128, prune=False, outlier_path=None):
         self.model_name = model_name
         self.config = config
         self.dev = dev
@@ -128,14 +128,9 @@ class BASE:
         self.dtype = dtype
 
         self.prune = prune
-        self.do_owq = do_owq
         self.outlier = None
         self.group_size = group_size
-        if do_owq:
-            if isinstance(outlier_path, str):
-                self.outlier = torch.load(outlier_path)
-            else:
-                self.outlier = outlier_path
+        
         self.load_model(device_map='cpu', dtype=dtype)
 
         print(f'self.model.dtype: ',self.model.dtype)
