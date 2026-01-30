@@ -8,9 +8,6 @@ import shutil
 from safetensors.torch import load_file, save_file
 import torch
 
-# -----------------------------------------------------
-# 配置
-# -----------------------------------------------------
 def convert_model(model_path:str = None, output_dir:str = None) :
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
@@ -19,11 +16,6 @@ def convert_model(model_path:str = None, output_dir:str = None) :
     MAX_SHARD_BYTES = 4 * 1024 ** 3
 
     os.makedirs(output_dir, exist_ok=True)
-
-
-    # -----------------------------------------------------
-    # 1. 复制 model_path → output_dir
-    # -----------------------------------------------------
     print("Copying model directory...")
 
     for root, dirs, files in os.walk(model_path):
@@ -37,11 +29,6 @@ def convert_model(model_path:str = None, output_dir:str = None) :
             shutil.copy2(src, dst)
 
     print("Model directory copied to:", output_dir)
-
-
-    # -----------------------------------------------------
-    # 2. 读取 copied 后的 safetensors（优先 index.json）
-    # -----------------------------------------------------
     index_path = os.path.join(output_dir, "model.safetensors.index.json")
 
     state_dict = {}
@@ -70,20 +57,12 @@ def convert_model(model_path:str = None, output_dir:str = None) :
         state_dict = load_file(sf_path)
         print(f"Loaded {len(state_dict)} tensors.")
 
-
-    # -----------------------------------------------------
-    # 3. 自动检测层数
-    # -----------------------------------------------------
     layer_keys = [k for k in state_dict.keys() if k.startswith("model.layers.")]
     layer_ids = set(int(k.split(".")[2]) for k in layer_keys)
     num_layers = max(layer_ids) + 1
 
     print("Detected layers:", num_layers)
 
-
-    # -----------------------------------------------------
-    # 4. key 映射表（与你之前提供的一致）
-    # -----------------------------------------------------
     key_map = {
         "model.embed_tokens.weight": "tok_embeddings.weight",
         "lm_head.weight": "output.weight",
@@ -155,9 +134,6 @@ def convert_model(model_path:str = None, output_dir:str = None) :
             f"model.layers.{i}.post_attention_layernorm.weight": f"layers.{i}.post_attention_layernorm.weight",
         })
 
-    # -----------------------------------------------------
-    # 5. 应用映射
-    # -----------------------------------------------------
     new_state = {}
     missing = []
 
@@ -171,10 +147,6 @@ def convert_model(model_path:str = None, output_dir:str = None) :
     if missing:
         print("Missing example keys:", missing[:5])
 
-
-    # -----------------------------------------------------
-    # 6. 删除旧 safetensors & index.json
-    # -----------------------------------------------------
     print("Removing old safetensors and index.json...")
 
     for f in os.listdir(output_dir):
@@ -183,10 +155,6 @@ def convert_model(model_path:str = None, output_dir:str = None) :
 
     print("Old files removed.")
 
-
-    # -----------------------------------------------------
-    # 7. 新 safetensors 分片保存
-    # -----------------------------------------------------
     def tensor_bytes(t):
         return t.numel() * t.element_size()
 
@@ -223,10 +191,6 @@ def convert_model(model_path:str = None, output_dir:str = None) :
 
         print("Saved:", name, f"({len(sd)} tensors)")
 
-
-    # -----------------------------------------------------
-    # 8. 写新的 index.json
-    # -----------------------------------------------------
     index = {
         "metadata": {"total_size": total_size},
         "weight_map": weight_map

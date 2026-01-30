@@ -327,7 +327,7 @@ def main(
     model, tokenizer = load_model(model_name, device, backend,
                                   bitwidth, random_init, 
                                   checkpoint_path, 
-                                  config_path, dtype,False,bitwidth,group_size, outfeature_interval)
+                                  config_path, dtype,False,4,group_size, outfeature_interval)
     
 
     device_sync(device=device) # MKG
@@ -432,7 +432,7 @@ if __name__ == '__main__':
     parser.add_argument('--profile', type=Path, default=None, help='Profile path.')
     parser.add_argument('--device', type=str, default=default_device, help='Device to use')
     parser.add_argument('--model_name', type=str, default=None, help='model_name') 
-    parser.add_argument('--bitwidth', type=int, default=None, help='bitwidth', choices=[2,3,4,16])
+    parser.add_argument('--bitwidth', type=float, default=None, help='bitwidth')
     parser.add_argument('--group_size', type=int, default=None, help='group size')
     parser.add_argument('--outfeature_interval', type=int, default=None, help='outfeature interval')
     parser.add_argument('--checkpoint_path', type=str, default=None, help='checkpoint path')
