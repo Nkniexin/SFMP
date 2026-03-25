@@ -1,6 +1,11 @@
 # SFMP: Fine-Grained, Hardware-Friendly and Search-Free Mixed-Precision Quantization for Large Language Models
 
 This repository provides an official implementation of **SFMP**, a **search-free** and **hardware-friendly** mixed-precision framework for rescource-constrained language models.
+<p align="center">
+  <a href="https://arxiv.org/abs/2602.01027">
+    <img src="https://img.shields.io/badge/arXiv-1234.5678-b31b1b.svg">
+  </a>
+</p>
 
 ![demo](assets/overview.png)
 
@@ -105,10 +110,15 @@ CUDA_VISIBLE_DEVICES=1 python generate.py
 ```
 
 
+## 📖 Citation
 
-
-
-
+```bibtex
+@article{nie2026sfmp,
+  title={SFMP: Fine-Grained, Hardware-Friendly and Search-Free Mixed-Precision Quantization for Large Language Models},
+  author={Nie, Xin and Zhang, Haicheng and Dong, Liang and Feng, Beining and Weng, Jinhong and Sun, Guiling},
+  journal={arXiv preprint arXiv:2602.01027},
+  year={2026}
+}
 
 
 
