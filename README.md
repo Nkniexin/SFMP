@@ -2,6 +2,7 @@
 
 This repository provides an official implementation of **SFMP**, a **search-free** and **hardware-friendly** mixed-precision framework for rescource-constrained language models.
 
+![demo](assets/overview.png)
 
 ## Key Features
 
