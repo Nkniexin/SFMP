@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sfmp"
+version = "0.1"
+description = "SFMP: Mixed-Precision Quantization for LLMs"
+authors = [
+    { name = "Xin Nie" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["."]
