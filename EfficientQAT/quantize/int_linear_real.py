@@ -56,7 +56,7 @@ class QuantLinear(nn.Module, TritonModuleMixin):
         )
         self.register_buffer(
             'qzeros',
-            torch.zeros((math.ceil(infeatures / self.group_size), math.ceil(outfeatures / (32 // self.bits))), dtype=torch.int32)
+            torch.zeros((math.ceil(infeatures / self.group_size), outfeatures), dtype=torch.float16)
         )
 
         self.register_buffer(
@@ -113,22 +113,7 @@ class QuantLinear(nn.Module, TritonModuleMixin):
 
         self.qweight = linear.get_intweight().t().contiguous()
 
-        zeros = zeros.numpy().astype(np.uint32)
-        self.zeros_dim0, self.zeros_dim1 = zeros.shape
-        qzeros = np.zeros((zeros.shape[0], math.ceil(zeros.shape[1] / (32 // self.bits))), dtype=np.uint32)
-        i = 0
-        col = 0
-        while col < qzeros.shape[1]:
-            if self.bits in [2, 3, 4, 8]:
-                for j in range(i, min(i + (32 // self.bits), zeros.shape[1])):
-                    qzeros[:, col] |= zeros[:, j] << (self.bits * (j - i))
-                i += 32 // self.bits
-                col += 1
-            else:
-                raise NotImplementedError("Only 2,3,4,8 bits are supported.")
-                
-        qzeros = qzeros.astype(np.int32)
-        self.qzeros = torch.from_numpy(qzeros)
+        self.qzeros = zeros.to(torch.float16)
 
     def forward(self, x):
         if self.use_fake:
@@ -145,7 +130,7 @@ class QuantLinear(nn.Module, TritonModuleMixin):
             weight = weight[self.col_order, : ]
             dim0, dim1 = weight.shape
             # dim2 = (dim1*dim0)//self.group_size
-            zeros = dequant_dim1(self.qzeros, self.bits, self.maxq, self.zeros_dim0, self.zeros_dim1)
+            zeros = self.qzeros.to(torch.float16)
             weight = ((weight.view(-1, self.group_size, dim1) - zeros.view(-1, 1, dim1)) * self.scales.view(-1, 1, dim1)).reshape(dim0, dim1)
 
             weight = weight[invcol, : ]
@@ -162,7 +147,7 @@ def load_quantized_model(model_path, wbits, group_size):
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
     config = AutoConfig.from_pretrained(model_path)
     with init_empty_weights():
-        model = AutoModelForCausalLM.from_config(config=config,torch_dtype=torch.float16, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_config(config=config,torch_dtype=config.dtype, trust_remote_code=True)
     layers = model.model.layers
     for i in tqdm(range(len(layers))):
         layer = layers[i]
@@ -180,5 +165,36 @@ def load_quantized_model(model_path, wbits, group_size):
     print("Loading pre-computed quantized weights Successfully")
 
     return model, tokenizer
+
+def load_quantized_model_multi_devices(model_path, wbits, group_size, model_type:str="llama") :
+    print(f"Loading quantized model from {model_path}")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    config = AutoConfig.from_pretrained(model_path)
+
+    with init_empty_weights():
+        model = AutoModelForCausalLM.from_config(config=config, torch_dtype=config.dtype, trust_remote_code=True)
+
+    layers = model.model.layers
+    for i in tqdm(range(len(layers)), desc="Replace linears with QuantLinear"):
+        layer = layers[i]
+        named_linears = get_named_linears(layer, torch.nn.Linear)
+        for name, module in named_linears.items():
+            q_linear = QuantLinear(wbits, group_size, module.in_features, module.out_features, module.bias is not None)
+            set_op_by_name(layer, name, q_linear)
+
+    torch.cuda.empty_cache()
+    gc.collect()
+    model.tie_weights()
+    block_class_name = model.model.layers[0].__class__.__name__
+    max_memory = {0:"2GB",1:"10GB",2:"10GB"}
+    device_map = infer_auto_device_map(model, max_memory=max_memory, no_split_module_classes=[block_class_name])
+    load_checkpoint_in_model(model,checkpoint=model_path,device_map=device_map,offload_state_dict=True)
+    model.gradient_checkpointing_enable()
+
+
+    return model, tokenizer
+
+
 
 __all__ = ["QuantLinear","load_omniq_quantized"]

@@ -38,6 +38,7 @@ def block_ap(
     trainloader,
     valloader,
     logger=None,
+    wbits = None,
 ):
     logger.info("Starting ...")
     if args.off_load_to_disk:
@@ -179,7 +180,13 @@ def block_ap(
         qlayer = copy.deepcopy(layer)
         for name, module in qlayer.named_modules():
             if isinstance(module,torch.nn.Linear):
-                quantlinear = int_linear_fake.QuantLinear(module, args.wbits, args.group_size,args.sensitivity_path, block_index, name)
+
+                key = f'model.layers.{block_index}.{name}'
+                if type(wbits) == dict :
+                    wbit = wbits[key]
+                else :
+                    wbit = wbits
+                quantlinear = int_linear_fake.QuantLinear(module, wbit, args.row_interval, args.group_size,args.sensitivity_path, block_index, name)
                 set_op_by_name(qlayer, name, quantlinear)  
                 del module  
         qlayer.to(dev)
@@ -307,7 +314,13 @@ def block_ap(
                 dim0 = module.weight.shape[0]
                 scales = scales.view(dim0,-1).transpose(0,1).contiguous()
                 zeros = zeros.view(dim0,-1).transpose(0,1).contiguous()
-                q_linear = int_linear_real.QuantLinear(args.wbits, group_size, module.in_features,module.out_features,not module.bias is None)
+
+                key= f'model.layers.{block_index}.{name}'
+                if type(wbits) == dict :
+                    wbit = wbits[key]
+                else :
+                    wbit = wbits
+                q_linear = int_linear_real.QuantLinear(wbit, group_size, module.in_features,module.out_features,not module.bias is None)
                 q_linear.pack(module.cpu(),  scales.float().cpu(), zeros.float().cpu())
                 set_op_by_name(qlayer, name, q_linear)       
                 logger.info(f"pack quantized {name} finished")

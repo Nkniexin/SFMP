@@ -56,6 +56,7 @@ class UniformAffineQuantizer(nn.Module):
     def __init__(
         self,
         n_bits:float = 3.0,
+        row_interval=None,
         group_size=None,
         weight=None,
         sensitivity_path=None,
@@ -69,8 +70,12 @@ class UniformAffineQuantizer(nn.Module):
         self.group_size = group_size if group_size != -1 else weight.shape[-1]
         assert weight.shape[-1] % group_size == 0
         self.enable = True
-        
-        score, col_order, invcol = self.bit_allocation(sensitivity_path, layer_idx, linear_name, weight.dtype, n_bits, group_size,weight.device)
+        if sensitivity_path == None :
+            score = torch.tensor(int(n_bits)).to(weight.device)
+            col_order = torch.arange(weight.shape[-1])
+            invcol = torch.argsort(col_order)
+        else :
+            score, col_order, invcol = self.bit_allocation(sensitivity_path, layer_idx, linear_name, n_bits, row_interval,group_size,weight.device)
         self.register_buffer('score',score)
         self.register_buffer('col_order',col_order)
         self.register_buffer('invcol',invcol)
@@ -93,10 +98,10 @@ class UniformAffineQuantizer(nn.Module):
                 zero_point = -(xmin/scale).clamp(min=-1e4, max=1e4) 
                 self.scale = nn.Parameter(scale)
                 self.zero_point = nn.Parameter(zero_point.round())
-    def bit_allocation(self,sensitivity_path = None, layer_idx = None, linear_name = None,dtype = None, wbits = None, groupsize = None,device = None) :
+    def bit_allocation(self,sensitivity_path = None, layer_idx = None, linear_name = None, wbits = None, row_interval:int = 256, groupsize = None,device = None) :
 
-        row_interval = 32
         sensitivity = np.load(f'{sensitivity_path}/model.layers.{layer_idx}.{linear_name}.npy')
+        dtype = torch.float32
         sensitivity = torch.tensor(sensitivity, dtype=dtype, device = device)
 
         col_sums = sensitivity.sum(dim=0)            

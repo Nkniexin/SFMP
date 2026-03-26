@@ -13,9 +13,7 @@ from pathlib import Path
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
 from quantize.int_linear_real import load_quantized_model
 from accelerate import infer_auto_device_map, dispatch_model
-
-
-
+from sfmp.bitallocation import bit_allocation
 
 torch.backends.cudnn.benchmark = True
 
@@ -88,7 +86,8 @@ def main():
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_fewshot", type=int, default=0,help='number of fewshot examples')
     parser.add_argument("--wbits", type=float, default=3.0, help="weights quantization bits")
-    parser.add_argument("--group_size", type=int, default=128, help="weights quantization group size")
+    parser.add_argument("--row_interval", type=int, default=512, help="row_interval, known as m_b")
+    parser.add_argument("--group_size", type=int, default=128, help="weights quantization group size, known as n_b")
     parser.add_argument("--quant_lr", type=float, default=1e-4, help="lr of quantization parameters (s and z)")
     parser.add_argument("--weight_lr", type=float, default=1e-5, help="lr of full-precision weights")
     parser.add_argument("--min_lr_factor", type=float, default=20, help="min_lr = lr/min_lr_factor")
@@ -157,12 +156,19 @@ def main():
                 )
                 torch.save(trainloader, cache_trainloader)    
                 torch.save(valloader, cache_valloader)    
+            if args.sensitivity_path is not None:
+                wbits = bit_allocation(model_path = args.model,sensitivity_path = args.sensitivity_path,bit = args.wbits,
+                                use_colreorder=True, use_rowreorder = True,row_interval=args.row_interval,
+                                groupsize=args.group_size)
+            else :
+                wbits = args.wbits
             block_ap(
                 model,
                 args,
                 trainloader,
                 valloader,
                 logger,
+                wbits
             )
             logger.info(time.time() - tick)
     torch.cuda.empty_cache()

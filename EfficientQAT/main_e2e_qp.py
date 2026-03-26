@@ -23,8 +23,9 @@ from datautils_e2e import make_data_module
 from bitsandbytes.optim import AdamW
 import os
 import utils
-from quantize.int_linear_real import load_quantized_model,QuantLinear
+from quantize.int_linear_real import load_quantized_model,QuantLinear,load_quantized_model_multi_devices
 from pathlib import Path
+from accelerate import infer_auto_device_map,dispatch_model
 
 
 
@@ -247,6 +248,7 @@ def get_accelerate_model(args, checkpoint_dir):
 
 
     
+    # model, tokenizer = load_quantized_model_multi_devices(args.quant_model_path,args.wbits, args.group_size)
     model, tokenizer = load_quantized_model(args.quant_model_path,args.wbits, args.group_size)
     tokenizer.model_max_length = args.pt_context_len
     

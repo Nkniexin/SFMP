@@ -16,6 +16,7 @@ class QuantLinear(nn.Module):
         self,
         org_module: nn.Linear,
         wbits=4,
+        row_interval=256,
         group_size=64,
         sensitivity_path = None,
         layer_idx = None,
@@ -34,7 +35,7 @@ class QuantLinear(nn.Module):
         # de-activate the quantized forward default
         self.use_weight_quant = False
         # initialize quantizer
-        self.weight_quantizer = UniformAffineQuantizer(wbits, group_size, weight=org_module.weight.clone().detach(), 
+        self.weight_quantizer = UniformAffineQuantizer(wbits, row_interval, group_size, weight=org_module.weight.clone().detach(), 
                                                        sensitivity_path = sensitivity_path, layer_idx = layer_idx, linear_name = linear_name)
         self.use_temporary_parameter = False
 
