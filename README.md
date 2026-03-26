@@ -22,6 +22,7 @@ This repository provides an official implementation of **SFMP**, a **search-free
 conda create -n sfmp python=3.11
 conda activate sfmp
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ## 🚀 Usage Examples
@@ -43,6 +44,10 @@ CUDA_VISIBLE_DEVICES=0 python awq.py --model_name path/to/llama3.1_8b_hf  \
  --use_colreorder --use_rowreorder --clip_asym --row_interval 512 --groupsize 128 \
  --real_quant  \
  --save llama3.1-8b-mixprecision-2.5
+```
+### 2. Eval 
+```bash
+cd eval
 
 # eval ppl
 CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-2.5 \
@@ -72,8 +77,8 @@ source do_install.sh
 
 ### 1. Prepare for BCQ format
 ```bash
-cd AWQ
-python BCQLinear.py \
+cd scripts
+python export2bcq.py \
   --resume_quant llama3.1-8b-mixprecision-2.5 \
   --wbits 2.25 \
   --group_size 128 \  
@@ -93,7 +98,7 @@ python convert_to_bcq.py \
 ### 3. Throughput Evaluation
 
 ```bash
-cd Inference/GPU
+cd Inference/GPU/bcqinference
 
 CUDA_VISIBLE_DEVICES=1 python generate.py 
  --compile 2 \
@@ -119,6 +124,4 @@ CUDA_VISIBLE_DEVICES=1 python generate.py
   journal={arXiv preprint arXiv:2602.01027},
   year={2026}
 }
-
-
-
+```

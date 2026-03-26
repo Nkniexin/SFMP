@@ -8,9 +8,9 @@ import torch
 import json
 import torch.nn as nn
 from tqdm import tqdm
-from QuantLinear import QuantLinear,load_quantized_model
+from .QuantLinear import QuantLinear,load_quantized_model
 import math
-from utils import *
+from .utils import *
 
 DeBug = False
 def pack_bits_to_int32(x: torch.Tensor):
@@ -100,7 +100,6 @@ class BCQLinear(nn.Module):
             torch.zeros(in_features // self.group_size * out_features // outfeature_interval, dtype=torch.int32)
         )
 
-
         if bias:
             self.register_buffer(
                 "bias",
@@ -110,7 +109,7 @@ class BCQLinear(nn.Module):
             self.bias = None
     def pack_from_quantLinear(self, quantLinear : QuantLinear) :
         
-        intweight = quantLinear.intweight
+        intweight = unpack_int4(quantLinear.intweight)
         alpha = quantLinear.scales.to(self.dtype)
         beta = quantLinear.zeros.to(self.dtype)
 
@@ -228,37 +227,7 @@ def export_bcq(model) :
     return model
 
 
-if __name__ == '__main__' :
 
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--resume_quant", type=str, help="Quantized model path")
-    parser.add_argument("--wbits", type=float, default=3.0, help="weights quantization bits")
-    parser.add_argument("--bit_allocation", type=str, default=None, help="bit allocation json file path")
-    parser.add_argument("--group_size", type=int, default=128, help="weights quantization group size")
-    parser.add_argument("--outfeature_interval", type=int, default=512, help="weight ")
-    parser.add_argument("--save_path", type=str,help='bcq model save path')
-
-    args = parser.parse_args()
-
-    if args.bit_allocation is not None :
-        with open(args.bit_allocation, 'r') as f :
-            wbits = json.load(f)
-
-    else :
-        wbits = args.wbits
-
-
-    model,tokenizer = load_quantized_model(args.resume_quant, wbits, args.group_size, args.outfeature_interval)
-    model.eval()
-
-
-    model = export_bcq(model)
-
-    model = model.half()
-    model.save_pretrained(args.save_path)
-    tokenizer.save_pretrained(args.save_path)
 
 
 

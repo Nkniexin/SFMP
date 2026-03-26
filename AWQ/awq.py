@@ -10,11 +10,8 @@ import json
 import os
 import time
 
-# import sys
-# sys.path.append('..')
 from base import BASE, get_awq_calib_dataset,get_gptq_calib_dataset,get_owq_calib_dataset
 from skip_llama import LlamaDecoderSkipLayer
-# from utils.dispatch import simple_dispatch_model
 from accelerate import dispatch_model
 
 import gc
@@ -24,8 +21,8 @@ import functools
 from copy import deepcopy
 
 from collections import defaultdict
-from QuantLinear import QuantLinear
-from bitallocation import bit_allocation, calculate_average_bit
+from sfmp import QuantLinear
+from sfmp.bitallocation import bit_allocation, calculate_average_bit
 
 def assign_importance_levels(importance, bit :float = 3.5):
 
@@ -1171,7 +1168,7 @@ if __name__ == '__main__' :
 
     parser.add_argument(
         '--groupsize', type=int, default= 128,
-        help='args.groupsize'
+        help='args.groupsize',choices=[64,128,256,512]
     )
 
     parser.add_argument(
@@ -1223,6 +1220,9 @@ if __name__ == '__main__' :
                     row_interval = args.row_interval)
 
     save_dir = args.save 
+    quantization_BPW = 32 / args.groupsize 
+    BPW = round(args.wbits + quantization_BPW,2)
+    save_dir = f'{save_dir}-BPW{BPW}'
 
     tick = time.time()
     awq_model.run(nsamples=128,seqlen=512,real_quant = args.real_quant,awq_results_cache=args.awq_results_cache,save_path=save_dir)

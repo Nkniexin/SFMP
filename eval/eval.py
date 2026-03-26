@@ -9,10 +9,10 @@ import time
 from datautils import get_loaders, test_ppl
 import torch.nn as nn
 from tqdm import tqdm
-import utils
+from sfmp import utils
 from pathlib import Path
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
-from QuantLinear import load_quantized_model
+from sfmp.QuantLinear import load_quantized_model
 from accelerate import infer_auto_device_map, dispatch_model
 
 def evaluate(model, tokenizer, args, logger):

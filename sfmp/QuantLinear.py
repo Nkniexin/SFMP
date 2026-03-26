@@ -6,8 +6,7 @@ import math
 from accelerate import init_empty_weights, infer_auto_device_map, load_checkpoint_in_model
 import transformers
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
-from utils import get_named_linears,set_op_by_name
-
+from .utils import get_named_linears,set_op_by_name,unpack_int4,pack_int4
 import gc
 
 class QuantLinear(nn.Module):
@@ -55,7 +54,7 @@ class QuantLinear(nn.Module):
 
         self.register_buffer(  
             'intweight',
-            torch.zeros((infeatures,outfeatures), dtype=torch.int8)
+            torch.zeros((infeatures // 2,outfeatures), dtype=torch.int8)
         )
 
         self.register_buffer(
@@ -81,7 +80,7 @@ class QuantLinear(nn.Module):
 
         self.in_reorder = in_reorder.reshape(in_reorder.shape).to(torch.int32)
         self.out_reorder = out_reorder.reshape(out_reorder.shape).to(torch.int32)
-        self.intweight = intweight.to(torch.int8)
+        self.intweight = pack_int4(intweight.to(torch.int8))
         self.scales = scales.to(self.dtype)
         self.zeros = zeros.to(self.dtype)
         self.block_bitwidth = block_bitwidth.to(torch.int8)
@@ -97,8 +96,8 @@ class QuantLinear(nn.Module):
     def forward(self, x):
 
         x = x[:, :, self.in_reorder]
-        dim0, dim1 = self.intweight.shape
-        weight = self.intweight.to(x.dtype)
+        dim0, dim1 = self.infeatures, self.outfeatures
+        weight = unpack_int4(self.intweight).to(x.dtype)
         weight = ((weight.reshape(-1, self.group_size, dim1) - self.zeros.reshape(-1, 1, dim1)) * self.scales.reshape(-1, 1, dim1)).reshape(dim0, dim1)
         out = torch.matmul(x, weight.to(x.dtype))
         out = out[:, :, self.out_reorder]

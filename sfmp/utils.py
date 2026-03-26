@@ -1,5 +1,6 @@
 import logging
 from termcolor import colored
+import torch
 import sys
 import os
 import time
@@ -47,3 +48,44 @@ def create_logger(output_dir, dist_rank=0, name=''):
     logger.addHandler(file_handler)
 
     return logger
+
+def pack_int4(t: torch.Tensor) -> torch.Tensor:
+    """
+    t: int8 tensor of shape [dim0, dim1]
+       each element uses only lower 4 bits
+    return: int8 tensor of shape [dim0//2, dim1]
+    """
+    assert t.dtype == torch.int8
+    assert t.dim() == 2
+    assert t.size(0) % 2 == 0
+
+    t_u = t.to(torch.uint8) & 0x0F
+
+    low  = t_u[0::2]        # [dim0/2, dim1]
+    high = t_u[1::2] << 4   # [dim0/2, dim1]
+
+    packed = low | high
+    return packed.to(torch.int8)
+
+
+def unpack_int4(packed: torch.Tensor) -> torch.Tensor:
+    """
+    packed: int8 tensor of shape [dim0//2, dim1]
+    return: int8 tensor of shape [dim0, dim1]
+    """
+    assert packed.dtype == torch.int8
+    assert packed.dim() == 2
+
+    p = packed.to(torch.uint8)
+
+    low  = p & 0x0F
+    high = (p >> 4) & 0x0F
+
+    dim0 = packed.size(0) * 2
+    dim1 = packed.size(1)
+
+    out = torch.empty((dim0, dim1), dtype=torch.int8, device=packed.device)
+    out[0::2] = low.to(torch.int8)
+    out[1::2] = high.to(torch.int8)
+
+    return out
