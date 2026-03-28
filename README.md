@@ -1,6 +1,6 @@
 # SFMP: Fine-Grained, Hardware-Friendly and Search-Free Mixed-Precision Quantization for Large Language Models
 
-This repository provides an official implementation of **SFMP**, a **search-free** and **hardware-friendly** mixed-precision framework for rescource-constrained language models.
+This repository provides an official implementation of **SFMP**, a **search-free** and **hardware-friendly** mixed-precision framework for rescource-constrained language models. If you find this work useful, we would appreciate it if you could give us a star ⭐.
 <p align="center">
   <a href="https://arxiv.org/abs/2602.01027">
     <img src="https://img.shields.io/badge/arXiv-2602.01027-b31b1b.svg">
