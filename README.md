@@ -17,6 +17,26 @@ This repository provides an official implementation of **SFMP**, a **search-free
 - **Weight Reordering Strategy**: Aggregates important weights while introducing only negligible inference overhead.
 - **Multiple Quantization Methods**: Supports multiple quantization methods, including AWQ, GPTQ, EfficientQAT, and more.
 
+## Model Zoo
+We provide a set of pre-quantized EfficientQAT models. You can download and evaluate the models in the `eval` directory to reproduce our results. More models will be released soon.
+
+- WikiText2 PPL is measured in 2048 context length.
+- Avg. Accuracy indicate the average accuracy in 6 zero-shot reasoning tasks (WinoGrande,PIQA,HellaSwag,Arc-Easy, Arc-Challenge, BoolQ) with [lm-eval v0.4.9](https://github.com/EleutherAI/lm-evaluation-harness).
+
+| Model | Quantization | WikiText2 PPL | Avg. Accuracy | Model Size (GB) | Hub link|
+|-------|--------------|---------------|---------------|-----------------|----------|
+Llama-3.1-8B|FP16|6.15|75.01|15.3| - 
+Llama-3.1-8B|w2.25-g128-BPW2.5|14.49|64.34|4.0|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/llama3.1-8b-mixprecision-wbits2.25-g128-BPW2.5)
+Llama-3.1-8B|w2.75-g128-BPW3.0|9.51|69.74|4.4|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/llama3.1-8b-mixprecision-wbits2.75-g128-BPW3.0)
+Llama-3.1-8B|w3.25-g128-BPW3.5|7.19|72.97|4.9|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/llama3.1-8b-mixprecision-wbits3.25-g128-BPW3.5)
+Llama-3.1-8B|w3.75-g128-BPW4.0|6.80|74.33|5.3|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/llama3.1-8b-mixprecision-wbits3.75-g128-BPW4.0)
+qwen3-8B|FP16|9.73|74.20|15.5| - 
+qwen3-8B|w2.25-g128-BPW2.5|16.50|66.16|4.4|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/qwen3-8b-mixprecision-wbits2.25-g128-BPW2.5)
+qwen3-8B|w2.75-g128-BPW3.0|12.0|71.51|4.8|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/qwen3-8b-mixprecision-wbits2.75-g128-BPW3.0)
+qwen3-8B|w3.25-g128-BPW3.5|10.41|72.74|5.2|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/qwen3-8b-mixprecision-wbits3.25-g128-BPW3.5)
+qwen3-8B|w3.75-g128-BPW4.0|9.96|73.29|5.6|[SFMP](https://www.modelscope.cn/models/niexin666/SFMP/tree/master/qwen3-8b-mixprecision-wbits3.75-g128-BPW4.0)
+
+
 ## 🔧 Installation
 ```bash
 conda create -n sfmp python=3.11
