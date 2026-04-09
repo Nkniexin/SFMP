@@ -103,7 +103,7 @@ source do_install.sh
 ```bash
 cd scripts
 python export2bcq.py \
-  --resume_quant llama3.1-8b-mixprecision-2.5 \
+  --resume_quant llama3.1-8b-mixprecision-wbits2.25-g128-BPW2.5 \
   --wbits 2.25 \
   --group_size 128 \  
   --outfeature_interval 512 \
