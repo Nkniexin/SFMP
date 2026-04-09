@@ -10,7 +10,7 @@ import json
 import os
 import time
 
-from base import BASE, get_awq_calib_dataset,get_gptq_calib_dataset,get_owq_calib_dataset
+from base import BASE, get_awq_calib_dataset
 from skip_llama import LlamaDecoderSkipLayer
 from accelerate import dispatch_model
 
@@ -22,22 +22,30 @@ from copy import deepcopy
 
 from collections import defaultdict
 from sfmp import QuantLinear
-from sfmp.bitallocation import bit_allocation, calculate_average_bit
+from sfmp.bitallocation import bit_allocation, calculate_average_bit, check_mixed_precison_config
+
+mixed_precision_config = {
+    "bits":None,
+    "quantile":None,
+}
 
 def assign_importance_levels(importance, bit :float = 3.5):
 
     flat = importance.flatten()
-    base_bit = int(bit)
-    percent = bit - base_bit
-    q = torch.quantile(flat, 1.0 - percent)
+    bits = mixed_precision_config["bits"]
+    quantile = mixed_precision_config["quantile"]
 
-    levels = torch.full_like(importance, fill_value=base_bit)
+    num_bits = len(bits)
+    num_quantiles = len(quantile)
 
-    levels[importance > q] = base_bit + 1
+    levels = torch.full_like(importance, fill_value=bits[0])
 
-    mask = torch.where(levels == (base_bit + 1), 1, 0)
+    for i in range(num_quantiles) :
+        i_quantile = quantile[i]
+        levels[importance > i_quantile] = bits[i+1]
     
-    return levels , mask
+    return levels 
+
 def direct_block(w,block_h:int = 32,block_w :int = 128,bit : float = 3.5):
 
     h_blocks = w.shape[0] // block_h
@@ -45,11 +53,11 @@ def direct_block(w,block_h:int = 32,block_w :int = 128,bit : float = 3.5):
 
     importance = w.reshape(h_blocks, block_h, w_blocks, block_w).sum(dim=(1, 3)).to(torch.float32)
 
-    bit_alloc_block,mask = assign_importance_levels(importance,bit)
+    bit_alloc_block = assign_importance_levels(importance,bit)
 
     bit_alloc_full = bit_alloc_block.repeat_interleave(block_h, dim=0).to(torch.int)
 
-    return bit_alloc_full , mask 
+    return bit_alloc_full 
 
 def bit_alloc_block_wise(w,block_h:int = 32,block_w :int = 128,bit : float = 3.5):
 
@@ -58,7 +66,7 @@ def bit_alloc_block_wise(w,block_h:int = 32,block_w :int = 128,bit : float = 3.5
 
     importance = w.reshape(h_blocks, block_h, w_blocks, block_w).sum(dim=(1, 3)).to(torch.float32)
 
-    block_width,mask = assign_importance_levels(importance, bit )
+    block_width = assign_importance_levels(importance, bit )
 
     return block_width
 
@@ -167,7 +175,7 @@ def real_quantize_tensor(w, n_bit = None, q_group_size=-1,use_colreorder = False
         row_order = torch.arange(dim1)
         invrow = torch.argsort(row_order)
 
-    score, mask = direct_block(sensitivity, row_interval, q_group_size, bit = n_bit)
+    score = direct_block(sensitivity, row_interval, q_group_size, bit = n_bit)
     score = score.to(w.device)
 
     
@@ -235,7 +243,7 @@ def pseudo_quantize_tensor(w, n_bit = None, zero_point=True, q_group_size=-1, in
         w = w[row_order, :]
         invrow = torch.argsort(row_order)
 
-    score, mask = direct_block(sensitivity, row_interval, q_group_size, bit = n_bit)
+    score = direct_block(sensitivity, row_interval, q_group_size, bit = n_bit)
     score = score.to(w.device)
 
     
@@ -778,7 +786,7 @@ class AWQ(BASE):
             sensitivity = sensitivity[row_order, :]   
             invrow = torch.argsort(row_order)
 
-        score, mask = direct_block(sensitivity, self.row_interval, group_size, bit = n_bit)
+        score = direct_block(sensitivity, self.row_interval, group_size, bit = n_bit)
         score = score.to(w.device)
 
         if self.use_rowreorder :
@@ -948,7 +956,7 @@ class AWQ(BASE):
             invrow = torch.argsort(row_order)
 
 
-        score, mask = direct_block(sensitivity, self.row_interval, group_size, bit = n_bit)
+        score = direct_block(sensitivity, self.row_interval, group_size, bit = n_bit)
         score = score.to(w.device)
 
         if self.use_rowreorder :
@@ -1191,15 +1199,30 @@ if __name__ == '__main__' :
         help='default dtype for quantized model'
     )
 
+    parser.add_argument(
+        '--level', default=3, type=int,
+        help='level for bit allocation'
+    )
+
+    parser.add_argument(
+        '--bit_choices',
+        type=int,
+        nargs='+',  
+        default=[2,3,4],
+        help='bit choices for multi-level bit allocation, e.g. --bit_choices 2 3 4'
+    )
+
     args = parser.parse_args()
 
     if args.use_bitallocation:
 
         print("====================Using bit allocation======================")
-        wbits = bit_allocation(model_path = args.model_name,sensitivity_path = args.sensitivity_path,bit = args.wbits,
+        wbits,bits,quantile = bit_allocation(model_path = args.model_name,sensitivity_path = args.sensitivity_path,bit = args.wbits,
                                use_colreorder=args.use_colreorder, use_rowreorder = args.use_rowreorder,row_interval=args.row_interval,
-                               groupsize=args.groupsize)
-
+                               groupsize=args.groupsize,level=args.level, bit_choices=args.bit_choices)
+        mixed_precision_config['bits'] = bits
+        mixed_precision_config['quantile'] = quantile
+        check_mixed_precison_config(mixed_precision_config)
         real_avebits = calculate_average_bit(model_path = args.model_name,sensitivity_path = args.sensitivity_path,bit_allocation = wbits)
         
         print("Average bit:",real_avebits)
@@ -1222,7 +1245,7 @@ if __name__ == '__main__' :
     save_dir = args.save 
     quantization_BPW = 32 / args.groupsize 
     BPW = round(args.wbits + quantization_BPW,2)
-    save_dir = f'{save_dir}-BPW{BPW}'
+    save_dir = f'{save_dir}-wbits{args.wbits}-g{args.groupsize}-BPW{BPW}'
 
     tick = time.time()
     awq_model.run(nsamples=128,seqlen=512,real_quant = args.real_quant,awq_results_cache=args.awq_results_cache,save_path=save_dir)

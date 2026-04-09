@@ -58,6 +58,12 @@ def train():
         print("Calibration with C4 ")
         dataloader, testloader = get_loaders(data_args.dataset,  model=model_args.model_name_or_path, seqlen=512,
                                             nsamples=data_args.num_examples)
+        
+    elif data_args.dataset == "wikitext2" :
+        from datautils import get_loaders
+        print("Calibration with wikitext2 ")
+        dataloader, testloader = get_loaders(data_args.dataset,  model=model_args.model_name_or_path, seqlen=512,
+                                            nsamples=data_args.num_examples)
     else:
         raise NotImplementedError("Please define your own dataset here")
 

@@ -9,6 +9,10 @@ This repository provides an official implementation of **SFMP**, a **search-free
 
 ![demo](assets/overview.png)
 
+## News 
+- [2026/4] We now support three bit-width options (e.g., 2, 3, and 4), which can improve performance 
+
+
 ## Key Features
 
 - **Fine-grained**: A block of size, for example, (512, 128), serves as the minimal unit of quantization.
@@ -63,24 +67,24 @@ CUDA_VISIBLE_DEVICES=0 python awq.py --model_name path/to/llama3.1_8b_hf  \
  --use_bitallocation --wbits 2.25 \
  --use_colreorder --use_rowreorder --clip_asym --row_interval 512 --groupsize 128 \
  --real_quant  \
- --save llama3.1-8b-mixprecision-2.5
+ --save llama3.1-8b-mixprecision
 ```
 ### 2. Eval 
 ```bash
 cd eval
 
 # eval ppl
-CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-2.5 \
+CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-wbits2.25-g128-BPW2.5 \
  --wbits 2.25 --group_size 128 \
  --outfeature_interval 512 --eval_ppl
 
 # eval zero-shot tasks
-CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-2.5  \
+CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-wbits2.25-g128-BPW2.5 \
 --wbits 2.25 --group_size 128 \
 --outfeature_interval 512 --eval_tasks hellaswag,winogrande,arc_easy,arc_challenge,piqa,boolq --eval_batch_size 16
 
 # eval 5-shot mmlu and gsm8k
-CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-2.5  \
+CUDA_VISIBLE_DEVICES=0 python eval.py --model_path llama3.1-8b-mixprecision-wbits2.25-g128-BPW2.5 \
 --wbits 2.25 --group_size 128 \
 --outfeature_interval 512 --eval_tasks gsm8k,mmlu --eval_batch_size 8 --num_fewshot 5
 
