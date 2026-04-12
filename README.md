@@ -22,7 +22,7 @@ This repository provides an official implementation of **SFMP**, a **search-free
 - **Multiple Quantization Methods**: Supports multiple quantization methods, including AWQ, GPTQ, EfficientQAT, and more.
 
 ## Model Zoo
-We provide a set of pre-quantized EfficientQAT models. You can download and evaluate the models in the `eval` directory to reproduce our results. More models will be released soon.
+We provide a set of pre-quantized SFMP models. You can download and evaluate the models in the `eval` directory to reproduce our results. More models will be released soon.
 
 - WikiText2 PPL is measured in 2048 context length.
 - Avg. Accuracy indicate the average accuracy in 6 zero-shot reasoning tasks (WinoGrande,PIQA,HellaSwag,Arc-Easy, Arc-Challenge, BoolQ) with [lm-eval v0.4.9](https://github.com/EleutherAI/lm-evaluation-harness).
