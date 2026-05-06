@@ -177,7 +177,7 @@ def bit_allocation_3level(model_path, sensitivity_path, bit, row_interval = None
 
     # loss scaling
     def loss_scale(b):
-        return (2**b - 1) ** 3
+        return (2**b - 1) ** 2
 
     loss_2 = loss_scale(bits[0])
     loss_3 = loss_scale(bits[1])
